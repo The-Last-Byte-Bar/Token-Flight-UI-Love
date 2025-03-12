@@ -286,7 +286,18 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     
     try {
-      const response = await fetch(url);
+      const finalUrl = url.includes('5.78.102.130') 
+        ? `/api/sigmanauts-proxy` // This would be your proxy endpoint
+        : url;
+
+      const response = await fetch(finalUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+
       if (!response.ok) {
         throw new Error(`API responded with status: ${response.status}`);
       }
@@ -296,20 +307,24 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
       let apiRecipients: Recipient[] = [];
       
       if (Array.isArray(data)) {
-        apiRecipients = data.map((item, index) => ({
-          id: `api-${Date.now()}-${index}`,
-          address: item[addressField] || '',
-          name: item.name || `API Recipient ${index + 1}`,
-        })).filter(r => r.address);
+        apiRecipients = data
+          .filter(item => item && item[addressField])
+          .map((item, index) => ({
+            id: `api-${Date.now()}-${index}`,
+            address: item[addressField],
+            name: item.name || `API Recipient ${index + 1}`,
+          }));
       } else if (typeof data === 'object' && data !== null) {
         const possibleArrays = Object.values(data).filter(val => Array.isArray(val));
         
         if (possibleArrays.length > 0) {
-          apiRecipients = (possibleArrays[0] as any[]).map((item, index) => ({
-            id: `api-${Date.now()}-${index}`,
-            address: item[addressField] || '',
-            name: item.name || `API Recipient ${index + 1}`,
-          })).filter(r => r.address);
+          apiRecipients = possibleArrays[0]
+            .filter((item: any) => item && item[addressField])
+            .map((item: any, index: number) => ({
+              id: `api-${Date.now()}-${index}`,
+              address: item[addressField],
+              name: item.name || `API Recipient ${index + 1}`,
+            }));
         }
       }
       
@@ -317,6 +332,8 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
         toast.error(`No valid recipient addresses found in the API response`);
         return false;
       }
+      
+      console.log('First few imported recipients:', apiRecipients.slice(0, 3));
       
       importRecipients(apiRecipients);
       return true;

@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedContainer from './PixelatedContainer';
@@ -20,7 +19,6 @@ const RecipientManagement = () => {
       return;
     }
     
-    // In a real implementation, validate the address format
     addRecipient(newAddress.trim(), newName.trim() || undefined);
     setNewAddress('');
     setNewName('');
@@ -35,8 +33,6 @@ const RecipientManagement = () => {
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        // Parse CSV or JSON
-        // This is a simplified implementation - in a real app, add more robust parsing
         const lines = content.split('\n');
         const newRecipients = lines
           .filter(line => line.trim())
@@ -67,6 +63,9 @@ const RecipientManagement = () => {
 
     setIsImportingApi(true);
     try {
+      console.log('Attempting to import from API:', apiUrl);
+      console.log('Using address field:', apiAddressField);
+      
       const success = await importRecipientsFromApi(apiUrl, apiAddressField);
       if (success) {
         toast.success('Recipients imported from API successfully');
@@ -83,6 +82,7 @@ const RecipientManagement = () => {
   const handleSigmanautsImport = async () => {
     setIsImportingApi(true);
     try {
+      console.log('Attempting to import Sigmanauts miners...');
       const success = await importRecipientsFromApi(
         'http://5.78.102.130:8000/sigscore/miners/bonus', 
         'address'
@@ -147,7 +147,6 @@ const RecipientManagement = () => {
         </div>
       </div>
 
-      {/* API Import Section */}
       <div className="border border-deepsea-medium bg-deepsea-dark/50 p-4 mb-6">
         <h3 className="font-bold mb-3">Import from API</h3>
         
