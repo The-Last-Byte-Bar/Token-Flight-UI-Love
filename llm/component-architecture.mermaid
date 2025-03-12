@@ -1,0 +1,47 @@
+flowchart TD
+    App[App Container] --> Header[Header with Wallet Connect]
+    App --> MainView[Main Content View]
+    App --> Footer[Footer]
+    
+    Header --> WalletButton[Nautilus Connect Button]
+    Header --> UserInfo[User Wallet Info]
+    
+    MainView --> AirdropCreator[Airdrop Creator Panel]
+    
+    AirdropCreator --> AssetSelector[Asset Selection Interface]
+    AirdropCreator --> DistributionConfig[Distribution Configuration]
+    AirdropCreator --> RecipientManager[Recipient Management]
+    AirdropCreator --> ReviewPanel[Review & Confirm]
+    
+    AssetSelector --> TokenList[Token List Component]
+    AssetSelector --> CollectionsList[NFT Collections List]
+    
+    TokenList --> TokenItem[Token Item]
+    CollectionsList --> CollectionItem[Collection Item]
+    CollectionItem --> NFTGrid[NFT Grid View]
+    NFTGrid --> NFTItem[Individual NFT Item]
+    
+    DistributionConfig --> TokenDistConfig[Token Distribution Selector]
+    DistributionConfig --> NFTDistConfig[NFT Distribution Selector]
+    
+    TokenDistConfig --> TotalDistInput[Total Distribution Input]
+    TokenDistConfig --> PerUserDistInput[Per User Distribution Input]
+    
+    NFTDistConfig --> OneToOneConfig[1-to-1 Mapping Interface]
+    NFTDistConfig --> SetDistConfig[Set Distribution Interface]
+    NFTDistConfig --> RandomDistConfig[Random Distribution Settings]
+    
+    RecipientManager --> AddressInput[Manual Address Input]
+    RecipientManager --> APISelector[API Selection]
+    RecipientManager --> RecipientList[Recipient List View]
+    
+    ReviewPanel --> AssetSummary[Assets Summary]
+    ReviewPanel --> DistributionSummary[Distribution Methods Summary]
+    ReviewPanel --> RecipientSummary[Recipients Summary]
+    ReviewPanel --> FeeEstimate[Transaction Fee Estimate]
+    ReviewPanel --> ConfirmButton[Confirm Button]
+    
+    ConfirmButton --> TxBuilder[Transaction Builder]
+    TxBuilder --> WalletSigner[Nautilus Wallet Signer]
+    WalletSigner --> TxSubmitter[Transaction Submitter]
+    TxSubmitter --> ResultDisplay[Result Display]

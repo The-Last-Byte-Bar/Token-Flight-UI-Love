@@ -1,0 +1,40 @@
+flowchart TD
+    Start([Start]) --> Connect[Connect Nautilus Wallet]
+    Connect --> Discovery{Asset Discovery}
+    Discovery --> |Success| Assets[Display Tokens & NFT Collections]
+    Discovery --> |Error| WalletError[Show Connection Error]
+    WalletError --> Connect
+    
+    Assets --> SelectAssets[Select Tokens/Collections for Airdrop]
+    SelectAssets --> TokenConfig[Configure Token Distribution Method]
+    SelectAssets --> NFTConfig[Configure NFT Distribution Method]
+    
+    TokenConfig --> |Per Token| PerTokenMethod[Choose Distribution per Token]
+    PerTokenMethod --> |Total Distribution| TotalDist[Set Total Amount]
+    PerTokenMethod --> |Per User| PerUserDist[Set Amount per Recipient]
+    
+    NFTConfig --> |Per Collection/NFT| PerNFTMethod[Choose Distribution per Collection/NFT]
+    PerNFTMethod --> |1-to-1| OneToOne[Match NFTs to Recipients]
+    PerNFTMethod --> |Set Distribution| SetDist[Configure Sets]
+    PerNFTMethod --> |Random| RandomDist[Set Random Parameters]
+    
+    TotalDist --> Recipients[Configure Recipients]
+    PerUserDist --> Recipients
+    OneToOne --> Recipients
+    SetDist --> Recipients
+    RandomDist --> Recipients
+    
+    Recipients --> |Manual Entry| ManualRec[Add Recipient Addresses]
+    Recipients --> |Platform API| PlatformAPI[Use Platform Recipients]
+    Recipients --> |Custom API| CustomAPI[Connect Custom API]
+    
+    ManualRec --> Review[Review Airdrop Details]
+    PlatformAPI --> Review
+    CustomAPI --> Review
+    
+    Review --> Confirm[Confirm & Sign Transaction]
+    Confirm --> |Success| Success[Display Success & TX ID]
+    Confirm --> |Failure| TxError[Show Transaction Error]
+    TxError --> Review
+    
+    Success --> Complete([Complete])

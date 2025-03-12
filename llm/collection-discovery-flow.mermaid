@@ -1,0 +1,46 @@
+flowchart TD
+    Start([Start Collection Discovery]) --> Connect[Connect to Nautilus Wallet]
+    Connect --> ScanWallet[Scan Wallet for Tokens]
+    ScanWallet --> FilterNFTs{Identify NFT Tokens}
+    
+    FilterNFTs --> |Regular Tokens| RegularTokens[Add to Regular Token List]
+    FilterNFTs --> |NFT Tokens| ProcessNFTs[Extract Token IDs]
+    
+    ProcessNFTs --> QueryAPI[Query Ergo Platform API]
+    QueryAPI --> |For each Token ID| APIEndpoint["https://api.ergoplatform.com/api/v1/boxes/{tokenId}"]
+    
+    APIEndpoint --> ParseMetadata[Parse Box Metadata]
+    ParseMetadata --> ExtractCollectionInfo[Extract Collection Information]
+    
+    ExtractCollectionInfo --> HasCollection{Has Collection Info?}
+    HasCollection --> |Yes| IdentifyCollection[Identify Collection]
+    HasCollection --> |No| StandAloneNFT[Mark as Standalone NFT]
+    
+    IdentifyCollection --> ExistingCollection{Existing Collection?}
+    ExistingCollection --> |Yes| AddToCollection[Add to Existing Collection]
+    ExistingCollection --> |No| CreateCollection[Create New Collection]
+    
+    AddToCollection --> UpdateCollectionUI[Update Collection in UI]
+    CreateCollection --> UpdateCollectionUI
+    StandAloneNFT --> AddToStandalone[Add to Standalone NFTs]
+    AddToStandalone --> UpdateCollectionUI
+    
+    RegularTokens --> DisplayAssets[Display Assets to User]
+    UpdateCollectionUI --> DisplayAssets
+    
+    DisplayAssets --> End([End Collection Discovery])
+    
+    subgraph "Collection Identification Process"
+        ExtractCollectionInfo
+        HasCollection
+        IdentifyCollection
+        ExistingCollection
+        AddToCollection
+        CreateCollection
+    end
+    
+    subgraph "API Integration"
+        QueryAPI
+        APIEndpoint
+        ParseMetadata
+    end

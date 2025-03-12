@@ -1,0 +1,40 @@
+sequenceDiagram
+    participant User
+    participant UI as UI/Frontend
+    participant Wallet as Nautilus Wallet
+    participant ErgoAPI as Ergo Platform API
+    participant AppState as Application State
+    
+    User->>UI: Connect Wallet
+    UI->>Wallet: Request Connection
+    Wallet-->>UI: Connection Approved
+    UI->>Wallet: Request Token List
+    Wallet-->>UI: Return Token List
+    
+    loop For each NFT Token ID
+        UI->>ErgoAPI: GET /api/v1/boxes/{tokenId}
+        ErgoAPI-->>UI: Return Box Data
+        UI->>UI: Parse Box Data
+        
+        alt Has Collection Metadata
+            UI->>AppState: Create/Update Collection
+            AppState-->>UI: Collection Updated
+        else No Collection Metadata
+            UI->>AppState: Add to Standalone NFTs
+            AppState-->>UI: Standalone NFTs Updated
+        end
+    end
+    
+    UI->>UI: Group NFTs by Collection
+    UI->>UI: Update Collections View
+    UI-->>User: Display Collections & NFTs
+    
+    User->>UI: Select Collection
+    UI->>UI: Show Collection NFTs
+    User->>UI: Select Distribution Method
+    UI->>AppState: Update Collection Distribution
+    AppState-->>UI: Collection Updated
+    
+    User->>UI: Toggle NFT Selection
+    UI->>AppState: Update NFT Selection State
+    AppState-->>UI: NFT Selection Updated
