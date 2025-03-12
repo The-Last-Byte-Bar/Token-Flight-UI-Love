@@ -1,10 +1,9 @@
-
 import { useState } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
 import { UserPlus, Trash2, Upload } from 'lucide-react';
-import { toast } from '@/components/ui/sonner';
+import { toast } from 'sonner';
 
 const RecipientManagement = () => {
   const { recipients, addRecipient, removeRecipient, importRecipients } = useAirdrop();

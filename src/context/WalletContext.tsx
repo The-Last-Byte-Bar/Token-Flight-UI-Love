@@ -1,7 +1,6 @@
-
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { WalletInfo } from '@/types';
-import { toast } from '@/components/ui/sonner';
+import { toast } from 'sonner';
 
 interface WalletContextType {
   wallet: WalletInfo;

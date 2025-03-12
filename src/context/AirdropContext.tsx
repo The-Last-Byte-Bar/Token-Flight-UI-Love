@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { 
   Token, 
@@ -12,7 +11,7 @@ import {
   AirdropConfig
 } from '@/types';
 import { useWallet } from './WalletContext';
-import { toast } from '@/components/ui/sonner';
+import { toast } from 'sonner';
 
 interface AirdropContextType {
   tokens: Token[];
