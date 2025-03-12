@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -61,6 +62,12 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				deepsea: {
+					dark: '#051630',
+					medium: '#072348',
+					light: '#1ca3ec',
+					bright: '#66CCFF'
 				}
 			},
 			borderRadius: {
@@ -84,11 +91,43 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'bubble-rise': {
+					'0%': { 
+						transform: 'translateY(0) translateX(0)',
+						opacity: '0'
+					},
+					'10%': { 
+						opacity: '1' 
+					},
+					'100%': { 
+						transform: 'translateY(-100px) translateX(calc(sin(var(--bubble-angle, 0deg)) * 20px))',
+						opacity: '0'
+					}
+				},
+				'pixel-pulse': {
+					'0%, 100%': { 
+						transform: 'scale(1)' 
+					},
+					'50%': { 
+						transform: 'scale(1.05)' 
+					}
+				},
+				'shimmer': {
+					'0%': { 
+						backgroundPosition: '-200% 0' 
+					},
+					'100%': { 
+						backgroundPosition: '200% 0' 
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'bubble-rise': 'bubble-rise 10s linear infinite',
+				'pixel-pulse': 'pixel-pulse 2s ease-in-out infinite',
+				'shimmer': 'shimmer 2s linear infinite'
 			}
 		}
 	},

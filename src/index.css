@@ -1,91 +1,48 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 210 85% 8%;
+    --foreground: 190 100% 90%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 210 75% 10%;
+    --card-foreground: 196 100% 90%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 210 75% 12%;
+    --popover-foreground: 196 100% 90%;
 
-    --primary: 222.2 47.4% 11.2%;
+    --primary: 196 83% 52%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 196 60% 40%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 210 50% 20%;
+    --muted-foreground: 196 40% 60%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 196 83% 70%;
+    --accent-foreground: 210 40% 10%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 196 50% 30%;
+    --input: 196 40% 20%;
+    --ring: 196 83% 52%;
 
-    --radius: 0.5rem;
+    --radius: 0.25rem;
 
+    /* Keep sidebar variables */
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
@@ -96,6 +53,55 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-deepsea-dark text-foreground;
+    background-image: url('/pixel-ocean-bg.png');
+    background-size: cover;
+    background-attachment: fixed;
+    image-rendering: pixelated;
   }
+
+  /* Pixel font styling */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Press Start 2P', system-ui, sans-serif;
+    @apply tracking-wide;
+  }
+}
+
+@layer components {
+  .pixel-border {
+    @apply border-2 border-deepsea-bright shadow-[4px_4px_0px_rgba(102,204,255,0.5)];
+    image-rendering: pixelated;
+  }
+  
+  .pixel-button {
+    @apply px-4 py-2 bg-deepsea-medium hover:bg-deepsea-light text-white font-bold rounded-none transition-colors pixel-border;
+    image-rendering: pixelated;
+  }
+  
+  .pixel-card {
+    @apply bg-deepsea-medium/80 backdrop-blur-sm p-4 rounded-none pixel-border;
+    image-rendering: pixelated;
+  }
+  
+  .bubble {
+    @apply absolute rounded-full bg-deepsea-bright/20 w-4 h-4 animate-bubble-rise pointer-events-none;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: #051630;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1ca3ec;
+  border: 2px solid #051630;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #66CCFF;
 }
