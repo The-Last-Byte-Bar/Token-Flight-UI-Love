@@ -128,6 +128,8 @@ const DistributionConfig = () => {
                           onClick={() => {
                             if (distribution.collection) {
                               setNFTDistributionType(distribution.collection.id, '1-to-1');
+                            } else if (distribution.nft) {
+                              setNFTDistributionType(distribution.nft.id, '1-to-1');
                             }
                           }}
                         >
@@ -138,6 +140,8 @@ const DistributionConfig = () => {
                           onClick={() => {
                             if (distribution.collection) {
                               setNFTDistributionType(distribution.collection.id, 'set');
+                            } else if (distribution.nft) {
+                              setNFTDistributionType(distribution.nft.id, 'set');
                             }
                           }}
                         >
@@ -148,6 +152,8 @@ const DistributionConfig = () => {
                           onClick={() => {
                             if (distribution.collection) {
                               setNFTDistributionType(distribution.collection.id, 'random');
+                            } else if (distribution.nft) {
+                              setNFTDistributionType(distribution.nft.id, 'random');
                             }
                           }}
                         >

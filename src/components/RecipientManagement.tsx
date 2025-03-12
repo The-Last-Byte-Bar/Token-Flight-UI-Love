@@ -1,14 +1,18 @@
+
 import { useState } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
-import { UserPlus, Trash2, Upload } from 'lucide-react';
+import { UserPlus, Trash2, Upload, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 
 const RecipientManagement = () => {
-  const { recipients, addRecipient, removeRecipient, importRecipients } = useAirdrop();
+  const { recipients, addRecipient, removeRecipient, importRecipients, importRecipientsFromApi } = useAirdrop();
   const [newAddress, setNewAddress] = useState('');
   const [newName, setNewName] = useState('');
+  const [apiUrl, setApiUrl] = useState('');
+  const [apiAddressField, setApiAddressField] = useState('address');
+  const [isImportingApi, setIsImportingApi] = useState(false);
   
   const handleAddRecipient = () => {
     if (!newAddress.trim()) {
@@ -53,6 +57,45 @@ const RecipientManagement = () => {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleApiImport = async () => {
+    if (!apiUrl) {
+      toast.error('Please enter an API URL');
+      return;
+    }
+
+    setIsImportingApi(true);
+    try {
+      const success = await importRecipientsFromApi(apiUrl, apiAddressField);
+      if (success) {
+        toast.success('Recipients imported from API successfully');
+        setApiUrl('');
+      }
+    } catch (error) {
+      console.error('API import error:', error);
+      toast.error('Failed to import recipients from API');
+    } finally {
+      setIsImportingApi(false);
+    }
+  };
+
+  const handleSigmanautsImport = async () => {
+    setIsImportingApi(true);
+    try {
+      const success = await importRecipientsFromApi(
+        'http://5.78.102.130:8000/sigscore/miners/bonus', 
+        'address'
+      );
+      if (success) {
+        toast.success('Sigmanauts miners imported successfully');
+      }
+    } catch (error) {
+      console.error('Sigmanauts import error:', error);
+      toast.error('Failed to import Sigmanauts miners');
+    } finally {
+      setIsImportingApi(false);
+    }
   };
   
   return (
@@ -100,6 +143,58 @@ const RecipientManagement = () => {
           <PixelatedButton variant="outline" className="flex items-center gap-2">
             <Upload className="h-4 w-4" />
             Import CSV/JSON
+          </PixelatedButton>
+        </div>
+      </div>
+
+      {/* API Import Section */}
+      <div className="border border-deepsea-medium bg-deepsea-dark/50 p-4 mb-6">
+        <h3 className="font-bold mb-3">Import from API</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold mb-2">API URL</label>
+            <input
+              type="text"
+              className="w-full bg-deepsea-dark border border-deepsea-medium p-2 text-white"
+              placeholder="https://api.example.com/users"
+              value={apiUrl}
+              onChange={(e) => setApiUrl(e.target.value)}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold mb-2">Address Field</label>
+            <input
+              type="text"
+              className="w-full bg-deepsea-dark border border-deepsea-medium p-2 text-white"
+              placeholder="address"
+              value={apiAddressField}
+              onChange={(e) => setApiAddressField(e.target.value)}
+            />
+          </div>
+          
+          <div className="flex items-end">
+            <PixelatedButton 
+              onClick={handleApiImport} 
+              disabled={isImportingApi}
+              className="w-full flex items-center justify-center gap-2"
+            >
+              <Globe className="h-4 w-4" />
+              {isImportingApi ? 'Importing...' : 'Import'}
+            </PixelatedButton>
+          </div>
+        </div>
+        
+        <div className="flex justify-center">
+          <PixelatedButton
+            variant="outline"
+            onClick={handleSigmanautsImport}
+            disabled={isImportingApi}
+            className="flex items-center gap-2"
+          >
+            <Globe className="h-4 w-4" />
+            Import Sigmanauts Mining Pool
           </PixelatedButton>
         </div>
       </div>

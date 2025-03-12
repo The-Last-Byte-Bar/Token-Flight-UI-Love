@@ -33,12 +33,13 @@ interface AirdropContextType {
   unselectCollection: (collectionId: string) => void;
   selectNFT: (nftId: string) => void;
   unselectNFT: (nftId: string) => void;
-  setNFTDistributionType: (collectionId: string, type: NFTDistributionType) => void;
+  setNFTDistributionType: (entityId: string, type: NFTDistributionType) => void;
   
   // Recipient functions
   addRecipient: (address: string, name?: string) => void;
   removeRecipient: (id: string) => void;
   importRecipients: (recipients: Recipient[]) => void;
+  importRecipientsFromApi: (url: string, addressField: string) => Promise<boolean>;
   
   // Navigation functions
   nextStep: () => void;
@@ -51,7 +52,6 @@ interface AirdropContextType {
 
 const AirdropContext = createContext<AirdropContextType | undefined>(undefined);
 
-// Mock data for initial development
 const mockTokens: Token[] = [
   { id: 'erg', name: 'ERG', amount: 100, decimals: 9 },
   { id: 'token1', name: 'SigUSD', amount: 500, decimals: 2 },
@@ -93,19 +93,16 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
-  // Load data when wallet is connected
   useEffect(() => {
     if (wallet.connected) {
       setLoading(true);
       
-      // Simulate API fetch delay
       setTimeout(() => {
         setTokens(mockTokens);
         setCollections(mockCollections);
         setLoading(false);
       }, 1500);
     } else {
-      // Reset state when wallet is disconnected
       setTokens([]);
       setCollections([]);
       setTokenDistributions([]);
@@ -114,7 +111,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     }
   }, [wallet.connected]);
 
-  // Token functions
   const selectToken = (tokenId: string) => {
     const token = tokens.find(t => t.id === tokenId);
     if (!token) return;
@@ -145,9 +141,7 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  // NFT functions
   const selectCollection = (collectionId: string) => {
-    // Update collection selected state
     setCollections(prev => 
       prev.map(collection => 
         collection.id === collectionId 
@@ -160,7 +154,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
       )
     );
     
-    // Add to distributions
     const collection = collections.find(c => c.id === collectionId);
     if (collection) {
       setNFTDistributions(prev => [
@@ -171,7 +164,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   };
 
   const unselectCollection = (collectionId: string) => {
-    // Update collection selected state
     setCollections(prev => 
       prev.map(collection => 
         collection.id === collectionId 
@@ -184,14 +176,12 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
       )
     );
     
-    // Remove from distributions
     setNFTDistributions(prev => 
       prev.filter(nd => nd.collection?.id !== collectionId)
     );
   };
 
   const selectNFT = (nftId: string) => {
-    // Find the NFT and its collection
     let targetNFT: NFT | undefined;
     let collectionId: string | undefined;
     
@@ -206,7 +196,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     
     if (!targetNFT || !collectionId) return;
     
-    // Update collections state
     setCollections(prev => 
       prev.map(collection => 
         collection.id === collectionId
@@ -220,7 +209,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
       )
     );
     
-    // Add to distributions if not part of a selected collection
     const existingCollectionDistribution = nftDistributions.find(
       nd => nd.collection?.id === collectionId
     );
@@ -234,7 +222,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   };
 
   const unselectNFT = (nftId: string) => {
-    // Find the NFT and its collection
     let collectionId: string | undefined;
     
     for (const collection of collections) {
@@ -247,7 +234,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     
     if (!collectionId) return;
     
-    // Update collections state
     setCollections(prev => 
       prev.map(collection => 
         collection.id === collectionId
@@ -261,21 +247,23 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
       )
     );
     
-    // Remove from distributions if individual NFT
     setNFTDistributions(prev => 
       prev.filter(nd => nd.nft?.id !== nftId)
     );
   };
 
-  const setNFTDistributionType = (collectionId: string, type: NFTDistributionType) => {
+  const setNFTDistributionType = (entityId: string, type: NFTDistributionType) => {
     setNFTDistributions(prev => 
-      prev.map(nd => 
-        nd.collection?.id === collectionId ? { ...nd, type } : nd
-      )
+      prev.map(nd => {
+        if ((nd.collection && nd.collection.id === entityId) || 
+            (nd.nft && nd.nft.id === entityId)) {
+          return { ...nd, type };
+        }
+        return nd;
+      })
     );
   };
 
-  // Recipient functions
   const addRecipient = (address: string, name?: string) => {
     const newRecipient: Recipient = {
       id: Date.now().toString(),
@@ -294,7 +282,53 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     setRecipients(prev => [...prev, ...newRecipients]);
   };
 
-  // Navigation functions
+  const importRecipientsFromApi = async (url: string, addressField: string): Promise<boolean> => {
+    setLoading(true);
+    
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`API responded with status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      let apiRecipients: Recipient[] = [];
+      
+      if (Array.isArray(data)) {
+        apiRecipients = data.map((item, index) => ({
+          id: `api-${Date.now()}-${index}`,
+          address: item[addressField] || '',
+          name: item.name || `API Recipient ${index + 1}`,
+        })).filter(r => r.address);
+      } else if (typeof data === 'object' && data !== null) {
+        const possibleArrays = Object.values(data).filter(val => Array.isArray(val));
+        
+        if (possibleArrays.length > 0) {
+          apiRecipients = (possibleArrays[0] as any[]).map((item, index) => ({
+            id: `api-${Date.now()}-${index}`,
+            address: item[addressField] || '',
+            name: item.name || `API Recipient ${index + 1}`,
+          })).filter(r => r.address);
+        }
+      }
+      
+      if (apiRecipients.length === 0) {
+        toast.error(`No valid recipient addresses found in the API response`);
+        return false;
+      }
+      
+      importRecipients(apiRecipients);
+      return true;
+    } catch (error) {
+      console.error('API import error:', error);
+      toast.error(`Failed to import from API: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const nextStep = () => {
     if (currentStep < 4) {
       setCurrentStep(prev => prev + 1);
@@ -307,7 +341,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Airdrop functions
   const getAirdropSummary = (): AirdropConfig => {
     return {
       tokenDistributions,
@@ -320,10 +353,8 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     
     try {
-      // Simulate transaction
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Mock transaction ID
       const txId = '9f5ZKbECR3HHtUbCR5UGQwkYGGt6K5VHAiGQw89RqDHHZ7jnSW1';
       
       toast.success(`Airdrop transaction submitted: ${txId}`);
@@ -359,6 +390,7 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
         addRecipient,
         removeRecipient,
         importRecipients,
+        importRecipientsFromApi,
         nextStep,
         prevStep,
         getAirdropSummary,
