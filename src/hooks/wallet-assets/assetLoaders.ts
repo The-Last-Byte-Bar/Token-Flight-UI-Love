@@ -8,7 +8,7 @@ import { createDebugLogger } from '@/hooks/useDebugLog';
 const debug = createDebugLogger('assetLoaders');
 
 /**
- * Load all assets from the wallet
+ * Load tokens immediately and collections in the background
  */
 export const loadWalletAssets = async (
   setState: (updater: (prev: WalletAssetsState) => WalletAssetsState) => void
@@ -16,23 +16,40 @@ export const loadWalletAssets = async (
   setState(prev => ({ ...prev, loading: true, error: null }));
   
   try {
-    // Load tokens
+    // Load tokens first (faster)
     const tokens = await CollectionService.getWalletTokens();
     
-    // Load collections
-    const collections = await CollectionService.getWalletCollections();
-    
+    // Update state with tokens immediately
     setState(prev => ({
       ...prev,
       tokens,
-      collections,
-      loading: false
+      loading: false // We'll use a separate loading indicator for collections
     }));
     
-    debug('Assets loaded:', {
-      tokens: tokens.length,
-      collections: collections.length
-    });
+    debug('Tokens loaded:', { tokens: tokens.length });
+    
+    // Then start loading collections in the background
+    setState(prev => ({ ...prev, collectionsLoading: true }));
+    
+    // Load collections in the background
+    CollectionService.getWalletCollections()
+      .then(collections => {
+        debug('Collections loaded in background:', { collections: collections.length });
+        
+        setState(prev => ({
+          ...prev,
+          collections,
+          collectionsLoading: false
+        }));
+      })
+      .catch(error => {
+        console.error('Error loading collections in background:', error);
+        setState(prev => ({
+          ...prev,
+          collectionsLoading: false,
+          collectionsError: error instanceof Error ? error.message : 'Unknown error loading collections'
+        }));
+      });
     
     return true;
   } catch (error) {
@@ -62,6 +79,8 @@ export const resetWalletAssets = (
     selectedCollections: [],
     selectedNFTs: [],
     loading: false,
-    error: null
+    collectionsLoading: false,
+    error: null,
+    collectionsError: null
   }));
 };

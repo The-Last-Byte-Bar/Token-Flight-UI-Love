@@ -5,21 +5,7 @@ import { toast } from "sonner";
 // Placeholder for NFT metadata fetching functions
 // In a real app, this would come from a blockchain explorer API or IPFS
 const TOKEN_METADATA_API = "https://api.ergoplatform.com/api/v1/tokens";
-
-// Interface for Nautilus wallet balance response
-interface NautilusWalletBalance {
-  confirmed: number;
-  unconfirmed: number;
-  height: number;
-  tokens?: {
-    tokenId: string;
-    amount: number;
-    decimals?: number;
-    name?: string;
-    description?: string;
-    icon?: string;
-  }[];
-}
+const BOX_METADATA_API = "https://api.ergoplatform.com/api/v1/boxes";
 
 /**
  * Service to handle token and NFT collection discovery from the connected wallet
@@ -119,7 +105,7 @@ export class CollectionService {
 
   /**
    * Get NFT collections from the wallet
-   * Groups NFTs by collection ID (if available) or creates "Uncategorized" collection
+   * Groups NFTs by collection ID using the R7 register data
    */
   static async getWalletCollections(): Promise<Collection[]> {
     if (!isNautilusAvailable() || !(await isConnectedToNautilus())) {
@@ -130,77 +116,120 @@ export class CollectionService {
     try {
       // Get all UTXOs from the wallet
       const utxos = await window.ergo?.get_utxos() || [];
-      const nfts: NFT[] = [];
-      const collections = new Map<string, Collection>();
-
-      // First pass - identify NFTs (tokens with amount = 1) from the wallet
+      
+      // First pass: identify potential NFTs (tokens with amount = 1)
+      const potentialNFTs: {tokenId: string, name?: string}[] = [];
+      
       for (const box of utxos) {
         if (box.assets && box.assets.length > 0) {
           for (const asset of box.assets) {
-            // Simple heuristic: tokens with amount = 1 and with registers are likely NFTs
             if (asset.amount === 1) {
-              // Extract NFT metadata from registers if available
-              let name = asset.name || asset.tokenId.substring(0, 8);
-              let description = "";
-              let imageUrl = "";
-              let collectionId = "uncategorized";
-              
-              // Try to extract more metadata if available in registers
-              if (box.additionalRegisters) {
-                // Try to decode registers that might contain NFT info
-                if (box.additionalRegisters.R4) {
-                  try {
-                    // This is a simplification - in a real app you would properly decode register values
-                    // For now we'll just use the value directly
-                    name = box.additionalRegisters.R4;
-                  } catch (e) {}
-                }
-                
-                if (box.additionalRegisters.R5) {
-                  try {
-                    description = box.additionalRegisters.R5;
-                  } catch (e) {}
-                }
-                
-                if (box.additionalRegisters.R6) {
-                  try {
-                    imageUrl = box.additionalRegisters.R6;
-                  } catch (e) {}
-                }
-                
-                // R7 often contains collection info
-                if (box.additionalRegisters.R7) {
-                  try {
-                    collectionId = box.additionalRegisters.R7;
-                  } catch (e) {}
-                }
-              }
-              
-              // Try to determine collection from the name pattern (e.g., "Collection #123")
-              if (collectionId === "uncategorized" && name.includes("#")) {
-                const parts = name.split("#");
-                if (parts.length > 1) {
-                  const collectionName = parts[0].trim();
-                  if (collectionName) {
-                    collectionId = collectionName;
-                  }
-                }
-              }
-              
-              // Add the NFT to our list
-              nfts.push({
-                id: asset.tokenId,
-                name,
-                description,
-                imageUrl: imageUrl || `https://via.placeholder.com/150?text=${encodeURIComponent(name)}`,
-                collectionId,
-                selected: false
+              potentialNFTs.push({
+                tokenId: asset.tokenId,
+                name: asset.name
               });
             }
           }
         }
       }
-
+      
+      console.log(`Found ${potentialNFTs.length} potential NFTs in wallet`);
+      
+      // Second pass: fetch box data for each potential NFT to extract collection info
+      const nfts: NFT[] = [];
+      const collections = new Map<string, Collection>();
+      const collectionLookup = new Map<string, string>(); // tokenId -> collectionId
+      
+      // Process each potential NFT
+      for (const nft of potentialNFTs) {
+        try {
+          // Fetch box data from API
+          const response = await fetch(`${BOX_METADATA_API}/byTokenId/${nft.tokenId}`);
+          
+          if (!response.ok) {
+            console.warn(`Failed to fetch box data for token ${nft.tokenId}`);
+            continue;
+          }
+          
+          const boxData = await response.json();
+          
+          // Extract metadata from registers
+          let name = nft.name || nft.tokenId.substring(0, 8);
+          let description = "";
+          let imageUrl = "";
+          let collectionId: string | null = null;
+          
+          // Process asset information
+          const assetInfo = boxData.assets?.find((a: any) => a.tokenId === nft.tokenId);
+          if (assetInfo && assetInfo.name) {
+            name = assetInfo.name;
+          }
+          
+          // Check registers for metadata
+          if (boxData.additionalRegisters) {
+            const registers = boxData.additionalRegisters;
+            
+            // Check R7 for collection ID - this is the key improvement
+            if (registers.R7) {
+              try {
+                // Extract the collection ID from R7 register
+                // The R7 register often contains the collection ID as a hex string
+                const r7Value = registers.R7.renderedValue || registers.R7.serializedValue;
+                
+                if (r7Value) {
+                  // Remove the "0e20" prefix if present (common in Ergo registers for Coll[Byte])
+                  const hexValue = r7Value.startsWith("0e20") ? r7Value.substring(4) : r7Value;
+                  
+                  // Check if this matches one of the token IDs in the box assets
+                  // If it does, it's a collection marker
+                  const matchingAsset = boxData.assets?.find((a: any) => a.tokenId === hexValue);
+                  
+                  if (matchingAsset) {
+                    collectionId = hexValue;
+                    collectionLookup.set(nft.tokenId, collectionId);
+                    console.log(`NFT ${name} (${nft.tokenId}) belongs to collection ${collectionId}`);
+                  }
+                }
+              } catch (e) {
+                console.warn(`Failed to decode R7 register for ${nft.tokenId}:`, e);
+              }
+            }
+            
+            // Get other metadata from registers
+            try {
+              if (registers.R5 && registers.R5.renderedValue) {
+                description = registers.R5.renderedValue;
+              }
+            } catch (e) {}
+            
+            try {
+              if (registers.R9 && registers.R9.renderedValue) {
+                // Sometimes R9 contains image URL or IPFS hash
+                imageUrl = registers.R9.renderedValue;
+                if (imageUrl.startsWith("ipfs://")) {
+                  imageUrl = `https://ipfs.io/ipfs/${imageUrl.substring(7)}`;
+                }
+              }
+            } catch (e) {}
+          }
+          
+          // Create the NFT object
+          const nftObj: NFT = {
+            id: nft.tokenId,
+            name,
+            description,
+            imageUrl: imageUrl || `https://via.placeholder.com/150?text=${encodeURIComponent(name)}`,
+            collectionId: collectionId || "uncategorized",
+            selected: false
+          };
+          
+          nfts.push(nftObj);
+          
+        } catch (error) {
+          console.error(`Error processing NFT ${nft.tokenId}:`, error);
+        }
+      }
+      
       // Group NFTs by collection
       nfts.forEach(nft => {
         const collId = nft.collectionId || "uncategorized";
@@ -210,10 +239,10 @@ export class CollectionService {
           const collection = collections.get(collId)!;
           collection.nfts.push(nft);
         } else {
-          // Create new collection with a more readable name
+          // Create new collection
           const collectionName = collId === "uncategorized" 
             ? "Uncategorized" 
-            : collId.replace(/([A-Z])/g, ' $1').trim(); // Add spaces before capital letters
+            : `Collection #${collections.size + 1}`;
           
           collections.set(collId, {
             id: collId,
@@ -223,10 +252,10 @@ export class CollectionService {
           });
         }
       });
-
-      // Convert to array and sort collections by name
+      
+      // Convert to array and sort collections by size (most NFTs first)
       return Array.from(collections.values())
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .sort((a, b) => b.nfts.length - a.nfts.length);
     } catch (error) {
       console.error("Error getting NFT collections:", error);
       toast.error("Failed to fetch NFT collections");
@@ -290,4 +319,4 @@ export class CollectionService {
       };
     }
   }
-} 
+}

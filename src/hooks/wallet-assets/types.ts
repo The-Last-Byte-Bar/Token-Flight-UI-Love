@@ -8,7 +8,9 @@ export interface WalletAssetsState {
   selectedCollections: Collection[];
   selectedNFTs: NFT[];
   loading: boolean;
+  collectionsLoading?: boolean;
   error: string | null;
+  collectionsError?: string | null;
 }
 
 export interface TokenSelection {

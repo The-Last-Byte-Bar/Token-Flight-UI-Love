@@ -17,7 +17,9 @@ export function useWalletAssets() {
     selectedCollections: [],
     selectedNFTs: [],
     loading: false,
-    error: null
+    collectionsLoading: false,
+    error: null,
+    collectionsError: null
   });
 
   // Load tokens and collections when wallet is connected

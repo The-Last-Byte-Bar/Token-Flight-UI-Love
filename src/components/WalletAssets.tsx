@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useWalletAssets } from '@/hooks/useWalletAssets';
 import { useAirdrop } from '@/context/AirdropContext';
@@ -15,6 +16,7 @@ export function WalletAssets() {
     tokens, 
     collections, 
     loading, 
+    collectionsLoading,
     refreshAssets, 
     toggleTokenSelection,
     toggleCollectionSelection,
@@ -123,6 +125,7 @@ export function WalletAssets() {
           </TabsTrigger>
           <TabsTrigger value="collections" className="font-pixel">
             Collections {collections.length > 0 && `(${collections.length})`}
+            {collectionsLoading && <span className="ml-2 animate-pulse">...</span>}
           </TabsTrigger>
         </TabsList>
         
@@ -174,11 +177,13 @@ export function WalletAssets() {
         </TabsContent>
         
         <TabsContent value="collections" className="mt-0">
-          {loading ? (
+          {collectionsLoading ? (
             <div className="space-y-4">
               {[1, 2].map((i) => (
                 <PixelatedContainer key={i} className="h-40 w-full animate-pulse bg-gray-700/30">
-                  <div className="h-full"></div>
+                  <div className="h-full flex items-center justify-center text-gray-400">
+                    Discovering collections...
+                  </div>
                 </PixelatedContainer>
               ))}
             </div>
@@ -234,7 +239,9 @@ export function WalletAssets() {
             </div>
           ) : (
             <PixelatedContainer className="text-center py-8 text-gray-500">
-              No NFT collections found in your wallet
+              {collectionsLoading ? 
+                "Discovering NFT collections..." : 
+                "No NFT collections found in your wallet"}
             </PixelatedContainer>
           )}
         </TabsContent>
