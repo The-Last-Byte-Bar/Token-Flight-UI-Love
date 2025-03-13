@@ -1,3 +1,4 @@
+
 import axios, { AxiosInstance } from 'axios';
 import { env } from '../../config/env';
 
@@ -35,6 +36,7 @@ class ErgoPlatformApi {
    */
   async getBoxByTokenId(tokenId: string) {
     try {
+      // Corrected endpoint for getting box by token ID
       const response = await this.client.get(`/boxes/${tokenId}`);
       return response.data;
     } catch (error) {
@@ -89,4 +91,4 @@ class ErgoPlatformApi {
   }
 }
 
-export default new ErgoPlatformApi(); 
+export default new ErgoPlatformApi();

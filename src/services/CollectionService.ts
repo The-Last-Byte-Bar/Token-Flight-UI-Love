@@ -2,8 +2,7 @@ import { Collection, NFT, Token } from "@/types";
 import { isConnectedToNautilus, isNautilusAvailable } from "@/lib/wallet";
 import { toast } from "sonner";
 
-// Placeholder for NFT metadata fetching functions
-// In a real app, this would come from a blockchain explorer API or IPFS
+// API endpoint for token and box metadata
 const TOKEN_METADATA_API = "https://api.ergoplatform.com/api/v1/tokens";
 const BOX_METADATA_API = "https://api.ergoplatform.com/api/v1/boxes";
 
@@ -143,8 +142,8 @@ export class CollectionService {
       // Process each potential NFT
       for (const nft of potentialNFTs) {
         try {
-          // Fetch box data from API
-          const response = await fetch(`${BOX_METADATA_API}/byTokenId/${nft.tokenId}`);
+          // Use the CORRECT endpoint format for fetching box data by token ID
+          const response = await fetch(`${BOX_METADATA_API}/${nft.tokenId}`);
           
           if (!response.ok) {
             console.warn(`Failed to fetch box data for token ${nft.tokenId}`);
@@ -173,7 +172,6 @@ export class CollectionService {
             if (registers.R7) {
               try {
                 // Extract the collection ID from R7 register
-                // The R7 register often contains the collection ID as a hex string
                 const r7Value = registers.R7.renderedValue || registers.R7.serializedValue;
                 
                 if (r7Value) {

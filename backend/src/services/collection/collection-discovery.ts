@@ -1,3 +1,4 @@
+
 import { NFTInfo, CollectionInfo, TokenInfo } from '../../models/wallet.model';
 import ergoPlatformApi from '../api/ergo-platform-api';
 
@@ -38,11 +39,7 @@ function extractCollectionInfo(boxData: any): {
   metadata: Record<string, any>;
 } {
   const registers = boxData.additionalRegisters || {};
-  
-  // Decode register values from hex to readable format
-  const decodedR4 = registers.R4 ? decodeRegister(registers.R4) : null;
-  const decodedR5 = registers.R5 ? decodeRegister(registers.R5) : null;
-  const decodedR6 = registers.R6 ? decodeRegister(registers.R6) : null;
+  const assets = boxData.assets || [];
   
   // Initialize collection info
   const metadata: Record<string, any> = {};
@@ -53,23 +50,54 @@ function extractCollectionInfo(boxData: any): {
     metadata
   };
   
-  // Look for collection identifiers
-  if (decodedR4 && decodedR4.includes('Collection:')) {
-    const collectionParts = decodedR4.split('Collection:');
-    if (collectionParts.length > 1) {
-      collectionInfo.collectionName = collectionParts[1].trim();
+  // Check for R7 register which often contains the collection ID
+  if (registers.R7 && registers.R7.renderedValue) {
+    const r7Value = registers.R7.renderedValue;
+    
+    // Check if any asset's tokenId matches the R7 value
+    // This indicates this token is part of a collection
+    const matchingAsset = assets.find((asset: any) => asset.tokenId === r7Value);
+    
+    if (matchingAsset) {
+      collectionInfo.collectionId = r7Value;
+      collectionInfo.collectionName = matchingAsset.name || `Collection ${r7Value.substring(0, 8)}`;
       collectionInfo.isPartOfCollection = true;
+      
+      console.log(`Found NFT in collection: ${collectionInfo.collectionName} (${r7Value})`);
     }
   }
   
-  // Store metadata
-  if (decodedR4) metadata.R4 = decodedR4;
-  if (decodedR5) metadata.R5 = decodedR5;
-  if (decodedR6) metadata.R6 = decodedR6;
+  // Decode other registers for additional metadata
+  if (registers.R4) metadata.R4 = registers.R4.renderedValue || registers.R4.serializedValue;
+  if (registers.R5) metadata.R5 = registers.R5.renderedValue || registers.R5.serializedValue;
+  if (registers.R6) metadata.R6 = registers.R6.renderedValue || registers.R6.serializedValue;
+  if (registers.R8) metadata.R8 = registers.R8.renderedValue || registers.R8.serializedValue;
+  if (registers.R9) metadata.R9 = registers.R9.renderedValue || registers.R9.serializedValue;
   
-  // Generate collection ID if not explicitly found
-  if (collectionInfo.isPartOfCollection && !collectionInfo.collectionId && collectionInfo.collectionName) {
-    collectionInfo.collectionId = `collection_${Buffer.from(collectionInfo.collectionName).toString('hex')}`;
+  // If we haven't found a collection ID via R7, check old method (register values)
+  if (!collectionInfo.isPartOfCollection) {
+    // Decode register values from hex to readable format
+    const decodedR4 = registers.R4 && registers.R4.renderedValue ? registers.R4.renderedValue : null;
+    const decodedR5 = registers.R5 && registers.R5.renderedValue ? registers.R5.renderedValue : null;
+    
+    // Look for collection identifiers in R4 or R5
+    if (decodedR4 && typeof decodedR4 === 'string' && decodedR4.includes('Collection:')) {
+      const collectionParts = decodedR4.split('Collection:');
+      if (collectionParts.length > 1) {
+        collectionInfo.collectionName = collectionParts[1].trim();
+        collectionInfo.isPartOfCollection = true;
+        // Generate collection ID from name if we found it this way
+        collectionInfo.collectionId = `collection_${Buffer.from(collectionInfo.collectionName).toString('hex')}`;
+      }
+    } else if (decodedR5 && typeof decodedR5 === 'string' && decodedR5.includes('Collection:')) {
+      const collectionParts = decodedR5.split('Collection:');
+      if (collectionParts.length > 1) {
+        collectionInfo.collectionName = collectionParts[1].trim();
+        collectionInfo.isPartOfCollection = true;
+        // Generate collection ID from name if we found it this way
+        collectionInfo.collectionId = `collection_${Buffer.from(collectionInfo.collectionName).toString('hex')}`;
+      }
+    }
   }
   
   return collectionInfo;
@@ -87,6 +115,8 @@ export async function discoverCollections(tokens: TokenInfo[]): Promise<{
   const potentialNfts = tokens.filter(token => token.amount === BigInt(1));
   const collections: Map<string, CollectionInfo> = new Map();
   const standaloneNfts: NFTInfo[] = [];
+  
+  console.log(`Processing ${potentialNfts.length} potential NFTs for collection discovery...`);
   
   // Process each potential NFT
   for (const token of potentialNfts) {
@@ -134,8 +164,12 @@ export async function discoverCollections(tokens: TokenInfo[]): Promise<{
     }
   }
   
+  const collectionsArray = Array.from(collections.values());
+  console.log(`Discovered ${collectionsArray.length} collections containing ${collectionsArray.reduce((acc, curr) => acc + curr.nfts.length, 0)} NFTs`);
+  console.log(`Found ${standaloneNfts.length} standalone NFTs`);
+  
   return {
-    collections: Array.from(collections.values()),
+    collections: collectionsArray,
     standaloneNfts
   };
 }
@@ -170,4 +204,4 @@ export async function scanWalletForCollections(address: string): Promise<{
       standaloneNfts: []
     };
   }
-} 
+}

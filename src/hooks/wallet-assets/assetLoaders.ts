@@ -29,7 +29,7 @@ export const loadWalletAssets = async (
     debug('Tokens loaded:', { tokens: tokens.length });
     
     // Then start loading collections in the background
-    setState(prev => ({ ...prev, collectionsLoading: true }));
+    setState(prev => ({ ...prev, collectionsLoading: true, collectionsError: null }));
     
     // Load collections in the background
     CollectionService.getWalletCollections()
@@ -49,6 +49,9 @@ export const loadWalletAssets = async (
           collectionsLoading: false,
           collectionsError: error instanceof Error ? error.message : 'Unknown error loading collections'
         }));
+        
+        // Don't show toast for collection errors - they're common and expected sometimes
+        // toast.error('Failed to load NFT collections');
       });
     
     return true;
