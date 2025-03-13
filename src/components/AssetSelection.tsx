@@ -1,3 +1,4 @@
+
 import { useEffect } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
 import { useWalletAssets } from '@/hooks/useWalletAssets';
@@ -25,7 +26,9 @@ export default function AssetSelection() {
   useEffect(() => {
     console.log('[AssetSelection] Component rendered', { 
       selectedTokensLength: selectedTokens.length,
-      tokensLength: tokens.length
+      tokensLength: tokens.length,
+      selectedNFTsLength: selectedNFTs.length,
+      selectedCollectionsLength: selectedCollections.length
     });
   });
 
@@ -79,17 +82,27 @@ export default function AssetSelection() {
       nfts: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
     });
     
-    // Set token distributions first
-    setTokenDistributions(newTokenDistributions);
+    // Clear existing distributions before setting new ones
+    setTokenDistributions([]);
+    setNFTDistributions([]);
     
-    // Then set NFT distributions
-    setNFTDistributions([...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]);
-    
-    // Force navigation to happen in the next event loop tick to ensure state updates are processed
+    // Add small delay to ensure state is cleared
     setTimeout(() => {
-      console.log('[AssetSelection] Navigating to next step');
-      nextStep();
-    }, 0);
+      // Set token distributions 
+      setTokenDistributions(newTokenDistributions);
+      
+      // Then set NFT distributions
+      setNFTDistributions([...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]);
+      
+      // Force navigation to happen after state updates are processed
+      setTimeout(() => {
+        console.log('[AssetSelection] Navigating to next step with updated distributions:', {
+          tokens: newTokenDistributions.length,
+          nfts: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
+        });
+        nextStep();
+      }, 50);
+    }, 50);
   };
 
   const hasSelections = selectedTokens.length > 0 || selectedNFTs.length > 0 || selectedCollections.length > 0;

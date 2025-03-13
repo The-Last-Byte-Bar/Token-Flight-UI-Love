@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAirdrop } from '@/context/AirdropContext';
@@ -28,7 +29,9 @@ export default function DistributionConfig() {
     });
     
     // Mark as initialized after first render
-    setIsInitialized(true);
+    setTimeout(() => {
+      setIsInitialized(true);
+    }, 100);
   }, []);
   
   // Log when distributions change
@@ -98,7 +101,7 @@ export default function DistributionConfig() {
               </PixelatedButton>
             </PixelatedContainer>
           ) : (
-            <Tabs defaultValue="tokens" value={activeTab} onValueChange={setActiveTab}>
+            <Tabs defaultValue={tokenDistributions.length > 0 ? "tokens" : "nfts"} value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid w-full grid-cols-2 mb-4">
                 <TabsTrigger value="tokens" className="font-pixel">
                   Tokens {tokenDistributions.length > 0 && `(${tokenDistributions.length})`}
