@@ -93,11 +93,17 @@ export function useAirdropState() {
 
   // Token selection handlers
   const selectToken = useCallback((tokenId: string) => {
-    handleSelectToken(tokens, tokenDistributions, setTokenDistributions, tokenId);
+    debug(`Selecting token: ${tokenId}`);
+    const updatedDistributions = handleSelectToken(tokens, tokenDistributions, setTokenDistributions, tokenId);
+    debug(`After selection, token distributions count: ${updatedDistributions?.length || tokenDistributions.length}`);
+    flushLogs();
   }, [tokens, tokenDistributions]);
 
   const unselectToken = useCallback((tokenId: string) => {
+    debug(`Unselecting token: ${tokenId}`);
     handleUnselectToken(setTokenDistributions, tokenId);
+    debug('Token unselected');
+    flushLogs();
   }, []);
 
   const setTokenDistributionType = useCallback((tokenId: string, type: any) => {
@@ -154,6 +160,16 @@ export function useAirdropState() {
       nftDistributions: nftDistributions?.length || 0
     });
     
+    if (currentStep === 1) {
+      // Log token distribution details before transitioning from step 1
+      debug('Token distributions before moving to step 2:', tokenDistributions?.map(d => ({
+        id: d.token.id,
+        name: d.token.name,
+        amount: d.amount,
+        type: d.type
+      })));
+    }
+    
     if (currentStep === 3 && recipients.length === 0) {
       toast.error('Please add at least one recipient');
       return;
@@ -163,6 +179,8 @@ export function useAirdropState() {
       debug(`Advancing from step ${currentStep} to ${currentStep + 1}`);
       setCurrentStep(prev => prev + 1);
     }
+    
+    flushLogs();
   }, [currentStep, tokenDistributions, nftDistributions, recipients]);
 
   const prevStep = useCallback(() => {

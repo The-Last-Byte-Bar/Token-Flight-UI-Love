@@ -1,10 +1,15 @@
-import { useState } from 'react';
+
+import { useState, useEffect } from 'react';
 import { useWalletAssets } from '@/hooks/useWalletAssets';
+import { useAirdrop } from '@/context/AirdropContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PixelatedContainer from '@/components/PixelatedContainer';
 import { RefreshCw } from 'lucide-react';
 import PixelatedButton from '@/components/PixelatedButton';
 import { Token } from '@/types';
+import { createDebugLogger, flushLogs } from '@/hooks/useDebugLog';
+
+const debug = createDebugLogger('WalletAssets');
 
 export function WalletAssets() {
   const { 
@@ -19,13 +24,57 @@ export function WalletAssets() {
     selectedNFTs
   } = useWalletAssets();
   
+  const { tokenDistributions, selectToken, unselectToken } = useAirdrop();
+  
   const [activeTab, setActiveTab] = useState('tokens');
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Sync token selections between useWalletAssets and AirdropContext when component mounts
+  useEffect(() => {
+    debug('WalletAssets component mounted, syncing token selections');
+    
+    // For each selected token, ensure it's in the airdrop context
+    if (selectedTokens.length > 0) {
+      debug(`Syncing ${selectedTokens.length} selected tokens with airdrop context`);
+      
+      selectedTokens.forEach(token => {
+        const isInContext = tokenDistributions.some(dist => dist.token.id === token.id);
+        if (!isInContext) {
+          debug(`Token ${token.name} (${token.id}) is selected but not in context, adding it`);
+          selectToken(token.id);
+        }
+      });
+    }
+    
+    flushLogs();
+  }, []);
   
   const handleRefresh = async () => {
     setRefreshing(true);
     await refreshAssets();
     setTimeout(() => setRefreshing(false), 1000);
+  };
+
+  // Custom token selection handler to sync with both wallet assets and airdrop context
+  const handleTokenSelection = (tokenId: string) => {
+    debug(`Token selection toggled: ${tokenId}`);
+    
+    // Get the current selection state before toggling
+    const isCurrentlySelected = selectedTokens.some(t => t.id === tokenId);
+    
+    // Toggle in wallet assets
+    const { selection } = toggleTokenSelection(tokenId);
+    
+    // Sync with airdrop context based on the new selection state
+    if (!isCurrentlySelected) {
+      debug(`Token ${tokenId} was not selected before, now selecting in context`);
+      selectToken(tokenId);
+    } else {
+      debug(`Token ${tokenId} was selected before, now unselecting in context`);
+      unselectToken(tokenId);
+    }
+    
+    flushLogs();
   };
 
   // Format token amount properly considering decimals
@@ -90,7 +139,7 @@ export function WalletAssets() {
           ) : tokens.length > 0 ? (
             <div className="space-y-2">
               {tokens.map(token => (
-                <div key={token.id} onClick={() => toggleTokenSelection(token.id)}>
+                <div key={token.id} onClick={() => handleTokenSelection(token.id)}>
                   <PixelatedContainer 
                     className={`flex items-center justify-between p-3 cursor-pointer ${isTokenSelected(token.id) ? 'border-deepsea-bright' : ''}`}
                   >
@@ -109,7 +158,7 @@ export function WalletAssets() {
                       className={`ml-2 text-xs py-1 px-3 ${isTokenSelected(token.id) ? 'bg-deepsea-bright' : 'bg-gray-700'}`}
                       onClick={(e) => {
                         e.stopPropagation(); // Prevent parent onClick from firing
-                        toggleTokenSelection(token.id);
+                        handleTokenSelection(token.id);
                       }}
                     >
                       {isTokenSelected(token.id) ? 'Selected' : 'Select'}

@@ -17,7 +17,8 @@ export default function AssetSelection() {
     setNFTDistributions,
     tokenDistributions,
     nftDistributions,
-    nextStep
+    nextStep,
+    selectToken
   } = useAirdrop();
 
   const { 
@@ -42,11 +43,18 @@ export default function AssetSelection() {
       currentTokenDistributions: tokenDistributions?.length || 0,
       currentNFTDistributions: nftDistributions?.length || 0
     });
+    
+    // Since this logs on every render, add the selections to help debug
+    if (selectedTokens.length > 0) {
+      debug('Selected tokens:', selectedTokens.map(t => ({ id: t.id, name: t.name })));
+    }
   }, [selectedTokens, selectedNFTs, selectedCollections, tokens, collections, tokenDistributions, nftDistributions]);
 
-  // Immediately set distributions when selections change
+  // Update distributions whenever selections change
   useEffect(() => {
     if (selectedTokens.length > 0 || selectedNFTs.length > 0 || selectedCollections.length > 0) {
+      // Explicitly update distributions when selections change, don't wait
+      debug('Selections changed, updating distributions immediately');
       updateDistributions();
     }
   }, [selectedTokens, selectedNFTs, selectedCollections]);
@@ -59,7 +67,7 @@ export default function AssetSelection() {
       selectedCollections: selectedCollections.length
     });
     
-    // Convert selected tokens directly to token distributions
+    // Directly use the token objects as they come from the wallet
     const newTokenDistributions: TokenDistribution[] = selectedTokens.map(token => {
       // Calculate a reasonable default amount based on decimals
       const initialAmount = token.decimals > 0 
@@ -115,7 +123,13 @@ export default function AssetSelection() {
       return;
     }
     
-    // Directly and synchronously update the context
+    // IMPORTANT: For each selected token, also call selectToken to ensure the context selection state is updated
+    newTokenDist.forEach(dist => {
+      debug(`Explicitly selecting token in context: ${dist.token.id}`);
+      selectToken(dist.token.id);
+    });
+    
+    // Now set the distributions directly
     setTokenDistributions(newTokenDist);
     debug('Token distributions set directly', { count: newTokenDist.length });
     
@@ -147,7 +161,14 @@ export default function AssetSelection() {
         return;
       }
       
-      // Wait for React state updates to be processed before navigating
+      // Force a final log flush before navigation
+      debug('Final distribution state before navigation:', {
+        tokenDistributions: tokenDistributions?.length || 0,
+        nftDistributions: nftDistributions?.length || 0
+      });
+      flushLogs();
+      
+      // Move to next step with a small delay to ensure state updates are processed
       setTimeout(() => {
         debug('Moving to next step after waiting for state updates');
         nextStep();

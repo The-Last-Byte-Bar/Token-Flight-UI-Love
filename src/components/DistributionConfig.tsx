@@ -31,6 +31,8 @@ export default function DistributionConfig() {
           type: dist.type
         });
       });
+    } else {
+      debug('NO TOKEN DISTRIBUTIONS FOUND! This is likely a bug.');
     }
     
     flushLogs();

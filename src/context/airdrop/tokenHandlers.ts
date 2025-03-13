@@ -29,16 +29,24 @@ export const handleSelectToken = (
       ? 0.1
       : 1;
   
-  setTokenDistributions(prev => [
-    ...prev, 
+  // Create a new array with the additional token distribution
+  const newDistributions = [
+    ...tokenDistributions, 
     { 
       token,
       type: 'total',
       amount: initialAmount
     }
-  ]);
+  ];
+  
+  // Set the new distributions directly to avoid any async issues
+  setTokenDistributions(newDistributions);
   
   console.log(`[AirdropContext] Token ${tokenId} added to distributions with initial amount: ${initialAmount}`);
+  console.log(`[AirdropContext] Token distributions now has ${newDistributions.length} items`);
+  
+  // Return the updated distributions for any callers that need it
+  return newDistributions;
 };
 
 export const handleUnselectToken = (
@@ -47,11 +55,11 @@ export const handleUnselectToken = (
 ) => {
   console.log(`[AirdropContext] Unselecting token: ${tokenId}`);
   
-  setTokenDistributions(prev => 
-    prev.filter(distribution => distribution.token.id !== tokenId)
-  );
-  
-  console.log(`[AirdropContext] Token ${tokenId} removed from distributions`);
+  setTokenDistributions(prev => {
+    const filtered = prev.filter(distribution => distribution.token.id !== tokenId);
+    console.log(`[AirdropContext] Token ${tokenId} removed from distributions. ${filtered.length} remain.`);
+    return filtered;
+  });
 };
 
 export const handleSetTokenDistributionType = (
@@ -61,13 +69,16 @@ export const handleSetTokenDistributionType = (
 ) => {
   console.log(`[AirdropContext] Setting token ${tokenId} distribution type to ${type}`);
   
-  setTokenDistributions(prev => 
-    prev.map(distribution => 
+  setTokenDistributions(prev => {
+    const updated = prev.map(distribution => 
       distribution.token.id === tokenId 
         ? { ...distribution, type } 
         : distribution
-    )
-  );
+    );
+    
+    console.log(`[AirdropContext] Updated token ${tokenId} type to ${type}. ${updated.length} distributions total.`);
+    return updated;
+  });
 };
 
 export const handleSetTokenAmount = (
@@ -77,11 +88,14 @@ export const handleSetTokenAmount = (
 ) => {
   console.log(`[AirdropContext] Setting token ${tokenId} amount to ${amount}`);
   
-  setTokenDistributions(prev => 
-    prev.map(distribution => 
+  setTokenDistributions(prev => {
+    const updated = prev.map(distribution => 
       distribution.token.id === tokenId 
         ? { ...distribution, amount } 
         : distribution
-    )
-  );
+    );
+    
+    console.log(`[AirdropContext] Updated token ${tokenId} amount to ${amount}. ${updated.length} distributions total.`);
+    return updated;
+  });
 };
