@@ -12,22 +12,28 @@ export default function TokenDistributionForm({ distribution }: TokenDistributio
   const { setTokenDistributionType, setTokenAmount } = useAirdrop();
   const [amount, setAmount] = useState(distribution.amount);
 
-  // Update local state when the distribution changes
+  // Debug and log full distribution details on mount
   useEffect(() => {
-    console.log('[TokenDistributionForm] Distribution updated:', distribution.token.name, distribution.amount);
+    console.log('[TokenDistributionForm] Distribution initialized:', {
+      token: distribution.token.name,
+      id: distribution.token.id,
+      amount: distribution.amount,
+      type: distribution.type
+    });
     setAmount(distribution.amount);
-  }, [distribution.amount, distribution.token.name]);
+  }, [distribution]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
     if (!isNaN(value)) {
       setAmount(value);
+      console.log(`[TokenDistributionForm] Updating amount for ${distribution.token.name} to ${value}`);
       setTokenAmount(distribution.token.id, value);
     }
   };
 
   const updateDistributionType = (type: TokenDistributionType) => {
-    console.log('[TokenDistributionForm] Updating type:', distribution.token.name, type);
+    console.log(`[TokenDistributionForm] Updating type for ${distribution.token.name} to ${type}`);
     setTokenDistributionType(distribution.token.id, type);
   };
 

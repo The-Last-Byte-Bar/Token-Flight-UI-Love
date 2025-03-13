@@ -6,6 +6,7 @@ import { WalletAssets } from './WalletAssets';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
 import { toast } from 'sonner';
+import { NFTDistribution, TokenDistribution } from '@/types';
 
 export default function AssetSelection() {
   const { 
@@ -54,71 +55,63 @@ export default function AssetSelection() {
     }
     
     try {
-      // First clear existing distributions
-      await setTokenDistributions([]);
-      await setNFTDistributions([]);
-      
-      // Small delay to ensure state is cleared
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
       // Convert selected tokens directly to token distributions
-      const newTokenDistributions = selectedTokens.map(token => {
+      const newTokenDistributions: TokenDistribution[] = selectedTokens.map(token => {
         // Calculate a reasonable default amount based on decimals
         const initialAmount = token.decimals > 0 
           ? 1 // A single token (e.g., 1 SigUSD)
           : token.name.toLowerCase() === 'erg' 
             ? 0.1 // Default to 0.1 ERG if it's the native token
             : 1; // Default for tokens without decimals
+            
+        console.log(`[AssetSelection] Creating token distribution for ${token.name} with amount ${initialAmount}`);
         
         return {
           token,
-          type: 'total' as const,
+          type: 'total',
           amount: initialAmount
         };
       });
       
       // Convert selected NFTs and collections directly to NFT distributions
-      const nftDistributionsFromCollections = selectedCollections.map(collection => ({
+      const nftDistributionsFromCollections: NFTDistribution[] = selectedCollections.map(collection => ({
         collection,
-        type: '1-to-1' as const
+        type: '1-to-1'
       }));
       
-      const nftDistributionsFromNFTs = selectedNFTs
+      const nftDistributionsFromNFTs: NFTDistribution[] = selectedNFTs
         // Filter out NFTs that are already part of a selected collection
         .filter(nft => !selectedCollections.some(c => 
           c.nfts.some(n => n.id === nft.id)
         ))
         .map(nft => ({
           nft,
-          type: '1-to-1' as const
+          type: '1-to-1'
         }));
       
-      console.log('[AssetSelection] Setting distributions', {
-        tokens: newTokenDistributions.length,
-        nfts: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
+      console.log('[AssetSelection] Created distributions', {
+        tokens: newTokenDistributions.map(d => d.token.name),
+        collections: nftDistributionsFromCollections.map(d => d.collection?.name),
+        nfts: nftDistributionsFromNFTs.map(d => d.nft?.name)
       });
       
-      // Set the new distributions
+      // Directly set the distributions without any async operations
       if (newTokenDistributions.length > 0) {
-        await setTokenDistributions(newTokenDistributions);
+        setTokenDistributions(newTokenDistributions);
       }
       
       if (nftDistributionsFromCollections.length > 0 || nftDistributionsFromNFTs.length > 0) {
-        await setNFTDistributions([...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]);
+        setNFTDistributions([...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]);
       }
       
       // Small delay to ensure state is updated before navigation
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Log before navigation
-      console.log('[AssetSelection] Ready to navigate to next step');
-      
-      // Navigate to the next step
-      nextStep();
+      setTimeout(() => {
+        nextStep();
+        setIsSubmitting(false);
+      }, 100);
     } catch (error) {
       console.error('[AssetSelection] Error setting distributions:', error);
       toast.error('Something went wrong preparing your distributions. Please try again.');
-    } finally {
       setIsSubmitting(false);
     }
   };
