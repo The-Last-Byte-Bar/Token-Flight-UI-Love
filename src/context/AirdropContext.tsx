@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { 
   Token, 
   NFT, 
@@ -350,17 +350,12 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const nextStep = () => {
+  const nextStep = useCallback(() => {
     debug('Moving to next step', {
       currentStep,
-      tokenDistributions: tokenDistributions.length,
-      nftDistributions: nftDistributions.length
+      tokenDistributions: tokenDistributions?.length || 0,
+      nftDistributions: nftDistributions?.length || 0
     });
-    
-    if (currentStep === 2 && tokenDistributions.length === 0 && nftDistributions.length === 0) {
-      toast.error('Please select at least one token or NFT to airdrop');
-      return;
-    }
     
     if (currentStep === 3 && recipients.length === 0) {
       toast.error('Please add at least one recipient');
@@ -371,7 +366,7 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
       debug(`Advancing from step ${currentStep} to ${currentStep + 1}`);
       setCurrentStep(prev => prev + 1);
     }
-  };
+  }, [currentStep, tokenDistributions, nftDistributions, recipients]);
 
   const prevStep = () => {
     if (currentStep > 1) {
@@ -409,8 +404,8 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     debug('Token distributions updated:', {
-      length: tokenDistributions.length,
-      distributions: tokenDistributions.map(d => `${d.token.name} (${d.amount})`)
+      length: tokenDistributions?.length || 0,
+      distributions: tokenDistributions?.map(d => `${d.token?.name || 'Unknown'} (${d.amount})`) || []
     });
     flushLogs();
   }, [tokenDistributions]);

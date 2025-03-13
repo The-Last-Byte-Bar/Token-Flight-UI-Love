@@ -21,12 +21,24 @@ export default function DistributionConfig() {
       nftDistributions: nftDistributions?.length || 0
     });
     
+    // Log all token distribution details
+    if (tokenDistributions && tokenDistributions.length > 0) {
+      tokenDistributions.forEach((dist, index) => {
+        debug(`Token distribution ${index}:`, {
+          token: dist.token.name,
+          id: dist.token.id,
+          amount: dist.amount,
+          type: dist.type
+        });
+      });
+    }
+    
     flushLogs();
   }, []);
 
   // Debug log when distributions change
   useEffect(() => {
-    debug('Distributions loaded:', {
+    debug('Distributions changed:', {
       tokenDistributionsCount: tokenDistributions?.length || 0,
       tokenDistributions: tokenDistributions?.map(d => ({
         name: d.token.name,

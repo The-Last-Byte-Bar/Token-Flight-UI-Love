@@ -1,8 +1,11 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TokenDistribution, TokenDistributionType } from '@/types';
 import PixelatedButton from './PixelatedButton';
 import { useAirdrop } from '@/context/AirdropContext';
+import { createDebugLogger } from '@/hooks/useDebugLog';
+
+const debug = createDebugLogger('TokenDistributionForm');
 
 interface TokenDistributionFormProps {
   distribution: TokenDistribution;
@@ -14,31 +17,40 @@ export default function TokenDistributionForm({ distribution }: TokenDistributio
 
   // Debug and log full distribution details on mount
   useEffect(() => {
-    console.log('[TokenDistributionForm] Distribution initialized:', {
-      token: distribution.token.name,
-      id: distribution.token.id,
-      amount: distribution.amount,
-      type: distribution.type
+    debug('Distribution initialized:', {
+      token: distribution?.token?.name || 'Unknown token',
+      id: distribution?.token?.id || 'Unknown ID',
+      amount: distribution?.amount || 0,
+      type: distribution?.type || 'unknown type'
     });
-    setAmount(distribution.amount);
+    if (distribution?.amount) {
+      setAmount(distribution.amount);
+    }
   }, [distribution]);
 
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
     if (!isNaN(value)) {
       setAmount(value);
-      console.log(`[TokenDistributionForm] Updating amount for ${distribution.token.name} to ${value}`);
-      setTokenAmount(distribution.token.id, value);
+      debug(`Updating amount for ${distribution?.token?.name || 'Unknown token'} to ${value}`);
+      if (distribution?.token?.id) {
+        setTokenAmount(distribution.token.id, value);
+      }
     }
-  };
+  }, [distribution, setTokenAmount]);
 
-  const updateDistributionType = (type: TokenDistributionType) => {
-    console.log(`[TokenDistributionForm] Updating type for ${distribution.token.name} to ${type}`);
+  const updateDistributionType = useCallback((type: TokenDistributionType) => {
+    if (!distribution?.token?.id) {
+      debug('Cannot update distribution type: missing token ID');
+      return;
+    }
+    
+    debug(`Updating type for ${distribution.token.name} to ${type}`);
     setTokenDistributionType(distribution.token.id, type);
-  };
+  }, [distribution, setTokenDistributionType]);
 
   // Format token amount properly considering decimals
-  const formatTokenAmount = (amount: string | number, decimals: number = 0) => {
+  const formatTokenAmount = useCallback((amount: string | number, decimals: number = 0) => {
     const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
     
     // Convert to human-readable format
@@ -54,7 +66,13 @@ export default function TokenDistributionForm({ distribution }: TokenDistributio
       maximumFractionDigits: decimals,
       minimumFractionDigits: 0
     });
-  };
+  }, []);
+
+  // Guard against invalid distribution data
+  if (!distribution || !distribution.token) {
+    debug('Invalid distribution data received');
+    return null;
+  }
 
   return (
     <div className="border border-deepsea-medium bg-deepsea-dark/50 p-4">

@@ -13,7 +13,12 @@ export function useDebugLog(
   dependencies: any[] = []
 ) {
   useEffect(() => {
-    console.log(`[${namespace}]`, value);
+    // Safely log values, handling undefined or circular references
+    try {
+      console.log(`[${namespace}]`, value);
+    } catch (e) {
+      console.log(`[${namespace}] Error logging value:`, e);
+    }
   }, dependencies);
 }
 
@@ -24,10 +29,14 @@ export function useDebugLog(
  */
 export function createDebugLogger(namespace: string) {
   return (message: string, data?: any) => {
-    if (data) {
-      console.log(`[${namespace}] ${message}`, data);
-    } else {
-      console.log(`[${namespace}] ${message}`);
+    try {
+      if (data !== undefined) {
+        console.log(`[${namespace}] ${message}`, data);
+      } else {
+        console.log(`[${namespace}] ${message}`);
+      }
+    } catch (e) {
+      console.log(`[${namespace}] Error logging message "${message}":`, e);
     }
   };
 }

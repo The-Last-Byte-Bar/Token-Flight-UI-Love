@@ -7,7 +7,7 @@ import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
 import { toast } from 'sonner';
 import { NFTDistribution, TokenDistribution } from '@/types';
-import { createDebugLogger } from '@/hooks/useDebugLog';
+import { createDebugLogger, flushLogs } from '@/hooks/useDebugLog';
 
 const debug = createDebugLogger('AssetSelection');
 
@@ -30,6 +30,7 @@ export default function AssetSelection() {
   } = useWalletAssets();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localDistributionsSet, setLocalDistributionsSet] = useState(false);
 
   // Debug log when component renders or selections change
   useEffect(() => {
@@ -38,10 +39,17 @@ export default function AssetSelection() {
       tokensLength: tokens.length,
       selectedNFTsLength: selectedNFTs.length,
       selectedCollectionsLength: selectedCollections.length,
-      currentTokenDistributions: tokenDistributions.length,
-      currentNFTDistributions: nftDistributions.length
+      currentTokenDistributions: tokenDistributions?.length || 0,
+      currentNFTDistributions: nftDistributions?.length || 0
     });
   }, [selectedTokens, selectedNFTs, selectedCollections, tokens, collections, tokenDistributions, nftDistributions]);
+
+  // Immediately set distributions when selections change
+  useEffect(() => {
+    if (selectedTokens.length > 0 || selectedNFTs.length > 0 || selectedCollections.length > 0) {
+      updateDistributions();
+    }
+  }, [selectedTokens, selectedNFTs, selectedCollections]);
 
   // Function to prepare distributions from selections
   const prepareDistributions = () => {
@@ -91,53 +99,65 @@ export default function AssetSelection() {
     };
   };
 
-  // Update distributions in context and navigate
-  const updateDistributionsAndNavigate = async () => {
+  // Update distributions in context immediately
+  const updateDistributions = () => {
+    const { tokenDistributions: newTokenDist, nftDistributions: newNftDist } = prepareDistributions();
+    
+    debug('Updating distributions in context now', {
+      tokenCount: newTokenDist.length,
+      nftCount: newNftDist.length,
+      tokens: newTokenDist.map(d => d.token.name),
+    });
+    
+    // Only update if we have selections
+    if (newTokenDist.length === 0 && newNftDist.length === 0) {
+      debug('No assets selected');
+      return;
+    }
+    
+    // Directly and synchronously update the context
+    setTokenDistributions(newTokenDist);
+    debug('Token distributions set directly', { count: newTokenDist.length });
+    
+    setNFTDistributions(newNftDist);
+    debug('NFT distributions set directly', { count: newNftDist.length });
+    
+    setLocalDistributionsSet(true);
+    flushLogs();
+  };
+
+  // Navigate to next step after ensuring distributions are set
+  const handleContinue = () => {
     if (isSubmitting) return;
+    
+    debug('Continue button clicked');
     setIsSubmitting(true);
     
     try {
-      const { tokenDistributions: newTokenDist, nftDistributions: newNftDist } = prepareDistributions();
-      
-      debug('Created distributions to save', {
-        tokenCount: newTokenDist.length,
-        nftCount: newNftDist.length,
-        tokens: newTokenDist.map(d => d.token.name),
-        nfts: newNftDist.map(d => d.collection?.name || d.nft?.name || 'Unknown')
-      });
+      // First make sure distributions are updated
+      updateDistributions();
       
       // Only proceed if we have selections
-      if (newTokenDist.length === 0 && newNftDist.length === 0) {
+      const hasSelections = selectedTokens.length > 0 || selectedNFTs.length > 0 || selectedCollections.length > 0;
+      
+      if (!hasSelections) {
         debug('No assets selected');
         toast.error('Please select at least one asset to distribute');
         setIsSubmitting(false);
         return;
       }
       
-      // Update token distributions with direct state update
-      setTokenDistributions(newTokenDist);
-      debug('Token distributions set directly', { count: newTokenDist.length });
-      
-      // Update NFT distributions with direct state update
-      setNFTDistributions(newNftDist);
-      debug('NFT distributions set directly', { count: newNftDist.length });
-      
-      // Wait for React state updates to be processed
+      // Wait for React state updates to be processed before navigating
       setTimeout(() => {
-        debug('Navigating to next step after distributions set');
+        debug('Moving to next step after waiting for state updates');
         nextStep();
         setIsSubmitting(false);
-      }, 800); // Increased timeout to ensure state updates are processed
+      }, 300);
     } catch (error) {
-      console.error('Error setting distributions:', error);
-      toast.error('Something went wrong preparing your distributions. Please try again.');
+      console.error('Error in continue flow:', error);
+      toast.error('Something went wrong. Please try again.');
       setIsSubmitting(false);
     }
-  };
-
-  const handleContinue = () => {
-    debug('Continue button clicked');
-    updateDistributionsAndNavigate();
   };
 
   const hasSelections = selectedTokens.length > 0 || selectedNFTs.length > 0 || selectedCollections.length > 0;
