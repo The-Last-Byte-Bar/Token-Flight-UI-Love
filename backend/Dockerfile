@@ -10,7 +10,11 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application
+# Use our custom script to modify tsconfig.json
+COPY docker-ts-config.js ./
+RUN node docker-ts-config.js
+
+# Run TypeScript build
 RUN npm run build
 
 # Production stage
@@ -25,6 +29,9 @@ RUN npm ci --only=production
 
 # Copy built app from builder stage
 COPY --from=builder /usr/src/app/dist ./dist
+
+# Copy data folder if it exists
+COPY --from=builder /usr/src/app/data ./data
 
 # Expose port
 EXPOSE 3000

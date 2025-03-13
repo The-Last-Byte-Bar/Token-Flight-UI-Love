@@ -1,0 +1,21 @@
+FROM node:18-alpine
+
+# Create app directory
+WORKDIR /usr/src/app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies including dev dependencies
+RUN npm install
+
+# No need to copy source code as we'll use volumes for development
+
+# Install ts-node and nodemon globally
+RUN npm install -g ts-node nodemon
+
+# Expose port
+EXPOSE 3000
+
+# Start the application in development mode with nodemon and ts-node --transpile-only
+CMD ["nodemon", "--exec", "ts-node", "--transpile-only", "src/server.ts"] 

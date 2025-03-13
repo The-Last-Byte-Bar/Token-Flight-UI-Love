@@ -121,6 +121,10 @@ router.post('/calculate-fee', async (req: Request, res: Response) => {
  *                   type: string
  *                   description: Transaction ID
  *                   example: "9f5ZKbECR3HHtUbCR5UGQwkYGGt6K5VHAiGQw89RqDHHZ7jnSW1"
+ *                 recordId:
+ *                   type: string
+ *                   description: Record ID for tracking progress
+ *                   example: "tx_1629384756_abc123def"
  *       400:
  *         description: Invalid configuration or missing parameters
  *       500:
@@ -128,6 +132,122 @@ router.post('/calculate-fee', async (req: Request, res: Response) => {
  */
 router.post('/execute', async (req: Request, res: Response) => {
   await airdropController.executeAirdrop(req, res);
+});
+
+/**
+ * @swagger
+ * /airdrop/transactions/{address}:
+ *   get:
+ *     summary: Get transaction history for an address
+ *     description: Returns all airdrop transactions initiated by the specified address
+ *     tags:
+ *       - Airdrop
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Wallet address
+ *     responses:
+ *       200:
+ *         description: Transaction history retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/TransactionRecord'
+ *       400:
+ *         description: Missing wallet address
+ *       500:
+ *         description: Failed to get transaction history
+ */
+router.get('/transactions/:address', async (req: Request, res: Response) => {
+  await airdropController.getTransactionHistory(req, res);
+});
+
+/**
+ * @swagger
+ * /airdrop/progress/{id}:
+ *   get:
+ *     summary: Get transaction progress
+ *     description: Returns the progress of an airdrop transaction
+ *     tags:
+ *       - Airdrop
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Transaction record ID
+ *     responses:
+ *       200:
+ *         description: Transaction progress retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 transaction:
+ *                   $ref: '#/components/schemas/TransactionRecord'
+ *                 progress:
+ *                   $ref: '#/components/schemas/TransactionProgress'
+ *       400:
+ *         description: Missing transaction ID
+ *       404:
+ *         description: Transaction not found
+ *       500:
+ *         description: Failed to get transaction progress
+ */
+router.get('/progress/:id', async (req: Request, res: Response) => {
+  await airdropController.getTransactionProgress(req, res);
+});
+
+/**
+ * @swagger
+ * /airdrop/preview:
+ *   post:
+ *     summary: Generate a preview of an airdrop
+ *     description: Returns a detailed preview of the airdrop distribution without executing it
+ *     tags:
+ *       - Airdrop
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - config
+ *             properties:
+ *               config:
+ *                 $ref: '#/components/schemas/AirdropConfig'
+ *               tokenMetadata:
+ *                 type: object
+ *                 description: Optional metadata for tokens
+ *                 additionalProperties:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     decimals:
+ *                       type: number
+ *     responses:
+ *       200:
+ *         description: Preview generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AirdropPreview'
+ *       400:
+ *         description: Invalid configuration
+ *       500:
+ *         description: Failed to generate preview
+ */
+router.post('/preview', async (req: Request, res: Response) => {
+  await airdropController.generateAirdropPreview(req, res);
 });
 
 export default router; 

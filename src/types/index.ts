@@ -1,4 +1,3 @@
-
 export interface Token {
   id: string;
   name: string;
@@ -58,4 +57,7 @@ export interface WalletInfo {
   connected: boolean;
   address?: string;
   balance?: number;
+  addresses?: string[];
+  changeAddress?: string;
+  api?: any; // Wallet API instance
 }

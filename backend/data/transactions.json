@@ -1,0 +1,43 @@
+{
+  "transactions": {
+    "tx_1741810623436_4cdbhvt": {
+      "id": "tx_1741810623436_4cdbhvt",
+      "txId": "testTxId",
+      "senderAddress": "testSenderAddress",
+      "timestamp": 1741810623436,
+      "config": {
+        "tokenDistributions": [
+          {
+            "tokenId": "token1",
+            "amount": 100,
+            "type": "total"
+          }
+        ],
+        "nftDistributions": [
+          {
+            "collectionId": "collection1",
+            "nftIds": [
+              "nft1",
+              "nft2"
+            ],
+            "type": "1-to-1"
+          }
+        ],
+        "recipients": [
+          {
+            "id": "recipient1",
+            "address": "addr1",
+            "name": "User 1"
+          },
+          {
+            "id": "recipient2",
+            "address": "addr2",
+            "name": "User 2"
+          }
+        ]
+      },
+      "status": "pending"
+    }
+  },
+  "progress": {}
+}

@@ -1,0 +1,241 @@
+{
+  "transactions": {
+    "tx_1741810623447_vsa7vwr": {
+      "id": "tx_1741810623447_vsa7vwr",
+      "txId": "tx1",
+      "senderAddress": "addr1",
+      "timestamp": 1741810623447,
+      "config": {
+        "tokenDistributions": [
+          {
+            "tokenId": "token1",
+            "amount": 100,
+            "type": "total"
+          }
+        ],
+        "nftDistributions": [
+          {
+            "collectionId": "collection1",
+            "nftIds": [
+              "nft1",
+              "nft2"
+            ],
+            "type": "1-to-1"
+          }
+        ],
+        "recipients": [
+          {
+            "id": "recipient1",
+            "address": "addr1",
+            "name": "User 1"
+          },
+          {
+            "id": "recipient2",
+            "address": "addr2",
+            "name": "User 2"
+          }
+        ]
+      },
+      "status": "confirmed",
+      "confirmedAt": 1741810623447
+    },
+    "tx_1741810623447_xr4du4m": {
+      "id": "tx_1741810623447_xr4du4m",
+      "txId": "tx1",
+      "senderAddress": "addr1",
+      "timestamp": 1741810623447,
+      "config": {
+        "tokenDistributions": [
+          {
+            "tokenId": "token1",
+            "amount": 100,
+            "type": "total"
+          }
+        ],
+        "nftDistributions": [
+          {
+            "collectionId": "collection1",
+            "nftIds": [
+              "nft1",
+              "nft2"
+            ],
+            "type": "1-to-1"
+          }
+        ],
+        "recipients": [
+          {
+            "id": "recipient1",
+            "address": "addr1",
+            "name": "User 1"
+          },
+          {
+            "id": "recipient2",
+            "address": "addr2",
+            "name": "User 2"
+          }
+        ]
+      },
+      "status": "failed",
+      "failureReason": "Not enough funds"
+    },
+    "tx_1741810623448_wnx0h7b": {
+      "id": "tx_1741810623448_wnx0h7b",
+      "txId": "tx1",
+      "senderAddress": "addr1",
+      "timestamp": 1741810623448,
+      "config": {
+        "tokenDistributions": [
+          {
+            "tokenId": "token1",
+            "amount": 100,
+            "type": "total"
+          }
+        ],
+        "nftDistributions": [
+          {
+            "collectionId": "collection1",
+            "nftIds": [
+              "nft1",
+              "nft2"
+            ],
+            "type": "1-to-1"
+          }
+        ],
+        "recipients": [
+          {
+            "id": "recipient1",
+            "address": "addr1",
+            "name": "User 1"
+          },
+          {
+            "id": "recipient2",
+            "address": "addr2",
+            "name": "User 2"
+          }
+        ]
+      },
+      "status": "pending"
+    },
+    "tx_1741810623449_v0w5jqj": {
+      "id": "tx_1741810623449_v0w5jqj",
+      "txId": "tx1",
+      "senderAddress": "addr1",
+      "timestamp": 1741810623449,
+      "config": {
+        "tokenDistributions": [
+          {
+            "tokenId": "token1",
+            "amount": 100,
+            "type": "total"
+          }
+        ],
+        "nftDistributions": [
+          {
+            "collectionId": "collection1",
+            "nftIds": [
+              "nft1",
+              "nft2"
+            ],
+            "type": "1-to-1"
+          }
+        ],
+        "recipients": [
+          {
+            "id": "recipient1",
+            "address": "addr1",
+            "name": "User 1"
+          },
+          {
+            "id": "recipient2",
+            "address": "addr2",
+            "name": "User 2"
+          }
+        ]
+      },
+      "status": "pending"
+    },
+    "tx_1741810623449_9f3w6ci": {
+      "id": "tx_1741810623449_9f3w6ci",
+      "txId": "tx2",
+      "senderAddress": "addr2",
+      "timestamp": 1741810623449,
+      "config": {
+        "tokenDistributions": [
+          {
+            "tokenId": "token1",
+            "amount": 100,
+            "type": "total"
+          }
+        ],
+        "nftDistributions": [
+          {
+            "collectionId": "collection1",
+            "nftIds": [
+              "nft1",
+              "nft2"
+            ],
+            "type": "1-to-1"
+          }
+        ],
+        "recipients": [
+          {
+            "id": "recipient1",
+            "address": "addr1",
+            "name": "User 1"
+          },
+          {
+            "id": "recipient2",
+            "address": "addr2",
+            "name": "User 2"
+          }
+        ]
+      },
+      "status": "pending"
+    }
+  },
+  "progress": {
+    "tx_1741810623447_vsa7vwr": {
+      "totalDistributions": 3,
+      "completedDistributions": 0,
+      "percentComplete": 0,
+      "transactionIds": [
+        "tx1"
+      ]
+    },
+    "tx_1741810623447_xr4du4m": {
+      "totalDistributions": 3,
+      "completedDistributions": 0,
+      "percentComplete": 0,
+      "transactionIds": [
+        "tx1"
+      ]
+    },
+    "tx_1741810623448_wnx0h7b": {
+      "totalDistributions": 3,
+      "completedDistributions": 2,
+      "percentComplete": 67,
+      "transactionIds": [
+        "tx1",
+        "tx2"
+      ],
+      "currentTokenId": "token1",
+      "currentDistributionType": "total"
+    },
+    "tx_1741810623449_v0w5jqj": {
+      "totalDistributions": 3,
+      "completedDistributions": 0,
+      "percentComplete": 0,
+      "transactionIds": [
+        "tx1"
+      ]
+    },
+    "tx_1741810623449_9f3w6ci": {
+      "totalDistributions": 3,
+      "completedDistributions": 0,
+      "percentComplete": 0,
+      "transactionIds": [
+        "tx2"
+      ]
+    }
+  }
+}

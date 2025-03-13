@@ -1,154 +1,122 @@
-
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
+import { useWalletAssets } from '@/hooks/useWalletAssets';
+import { WalletAssets } from './WalletAssets';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Coins, Image } from 'lucide-react';
 
-const AssetSelection = () => {
+export default function AssetSelection() {
   const { 
-    tokens, 
-    collections, 
-    tokenDistributions, 
-    selectToken, 
-    unselectToken,
-    selectCollection,
-    unselectCollection,
-    selectNFT,
-    unselectNFT
+    setTokenDistributions,
+    setNFTDistributions,
+    nextStep
   } = useAirdrop();
-  
-  const [selectedTab, setSelectedTab] = useState("tokens");
-  
-  const isTokenSelected = (tokenId: string) => {
-    return tokenDistributions.some(td => td.token.id === tokenId);
-  };
-  
-  const isCollectionSelected = (collectionId: string) => {
-    const collection = collections.find(c => c.id === collectionId);
-    return collection?.selected || false;
-  };
-  
-  const isNFTSelected = (nftId: string) => {
-    for (const collection of collections) {
-      const nft = collection.nfts.find(n => n.id === nftId);
-      if (nft?.selected) return true;
-    }
-    return false;
-  };
-  
-  return (
-    <PixelatedContainer className="mb-6">
-      <h2 className="text-xl font-bold mb-4 text-deepsea-bright">Select Assets</h2>
-      
-      <Tabs defaultValue="tokens" value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="grid grid-cols-2 mb-4">
-          <TabsTrigger value="tokens" className="flex items-center gap-2">
-            <Coins className="h-4 w-4" />
-            Tokens
-          </TabsTrigger>
-          <TabsTrigger value="nfts" className="flex items-center gap-2">
-            <Image className="h-4 w-4" />
-            NFTs
-          </TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="tokens">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {tokens.map(token => (
-              <div key={token.id} className="border border-deepsea-medium bg-deepsea-dark/50 p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-bold">{token.name}</h3>
-                    <p className="text-sm text-deepsea-bright">
-                      Balance: {token.amount.toLocaleString()}
-                    </p>
-                  </div>
-                  <PixelatedButton
-                    variant={isTokenSelected(token.id) ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      if (isTokenSelected(token.id)) {
-                        unselectToken(token.id);
-                      } else {
-                        selectToken(token.id);
-                      }
-                    }}
-                  >
-                    {isTokenSelected(token.id) ? "Selected" : "Select"}
-                  </PixelatedButton>
-                </div>
-              </div>
-            ))}
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="nfts">
-          <div className="space-y-6">
-            {collections.map(collection => (
-              <div key={collection.id} className="border border-deepsea-medium bg-deepsea-dark/50 p-4">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-bold">{collection.name}</h3>
-                    <p className="text-sm text-deepsea-bright">
-                      {collection.nfts.length} NFTs
-                    </p>
-                  </div>
-                  <PixelatedButton
-                    variant={isCollectionSelected(collection.id) ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      if (isCollectionSelected(collection.id)) {
-                        unselectCollection(collection.id);
-                      } else {
-                        selectCollection(collection.id);
-                      }
-                    }}
-                  >
-                    {isCollectionSelected(collection.id) ? "Selected" : "Select All"}
-                  </PixelatedButton>
-                </div>
-                
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-4">
-                  {collection.nfts.map(nft => (
-                    <div 
-                      key={nft.id}
-                      className={`relative border-2 cursor-pointer transition-all ${
-                        isNFTSelected(nft.id) 
-                          ? "border-deepsea-bright" 
-                          : "border-deepsea-medium hover:border-deepsea-light"
-                      }`}
-                      onClick={() => {
-                        if (isNFTSelected(nft.id)) {
-                          unselectNFT(nft.id);
-                        } else {
-                          selectNFT(nft.id);
-                        }
-                      }}
-                    >
-                      <div className="aspect-square bg-deepsea-medium flex items-center justify-center">
-                        {/* In a real implementation, this would show the actual NFT image */}
-                        <div className="text-3xl">🐙</div>
-                      </div>
-                      <div className="p-2 text-xs truncate">
-                        {nft.name}
-                      </div>
-                      {isNFTSelected(nft.id) && (
-                        <div className="absolute top-1 right-1 bg-deepsea-bright w-4 h-4 flex items-center justify-center text-deepsea-dark font-bold">
-                          ✓
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </TabsContent>
-      </Tabs>
-    </PixelatedContainer>
-  );
-};
 
-export default AssetSelection;
+  const { 
+    selectedTokens, 
+    selectedNFTs, 
+    selectedCollections,
+    tokens,
+    collections,
+    loading
+  } = useWalletAssets();
+
+  // Log whenever component renders to track what's happening
+  useEffect(() => {
+    console.log('[AssetSelection] Component rendered', { 
+      selectedTokensLength: selectedTokens.length,
+      tokensLength: tokens.length
+    });
+  });
+
+  const handleContinue = () => {
+    console.log('[AssetSelection] Continue clicked - preparing distributions', {
+      selectedTokens: selectedTokens.length,
+      selectedNFTs: selectedNFTs.length,
+      selectedCollections: selectedCollections.length
+    });
+    
+    // Only proceed if we have selections
+    if (selectedTokens.length === 0 && selectedNFTs.length === 0 && selectedCollections.length === 0) {
+      console.warn('[AssetSelection] No assets selected');
+      return;
+    }
+    
+    // Convert selected tokens directly to token distributions
+    const newTokenDistributions = selectedTokens.map(token => {
+      // Calculate a reasonable default amount based on decimals
+      const initialAmount = token.decimals > 0 
+        ? 1 // A single token (e.g., 1 SigUSD)
+        : token.name.toLowerCase() === 'erg' 
+          ? 0.1 // Default to 0.1 ERG if it's the native token
+          : 1; // Default for tokens without decimals
+      
+      return {
+        token,
+        type: 'total' as const,
+        amount: initialAmount
+      };
+    });
+    
+    // Convert selected NFTs and collections directly to NFT distributions
+    const nftDistributionsFromCollections = selectedCollections.map(collection => ({
+      collection,
+      type: '1-to-1' as const
+    }));
+    
+    const nftDistributionsFromNFTs = selectedNFTs
+      // Filter out NFTs that are already part of a selected collection
+      .filter(nft => !selectedCollections.some(c => 
+        c.nfts.some(n => n.id === nft.id)
+      ))
+      .map(nft => ({
+        nft,
+        type: '1-to-1' as const
+      }));
+    
+    console.log('[AssetSelection] Setting distributions', {
+      tokens: newTokenDistributions.length,
+      nfts: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
+    });
+    
+    // Set token distributions first
+    setTokenDistributions(newTokenDistributions);
+    
+    // Then set NFT distributions
+    setNFTDistributions([...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]);
+    
+    // Force navigation to happen in the next event loop tick to ensure state updates are processed
+    setTimeout(() => {
+      console.log('[AssetSelection] Navigating to next step');
+      nextStep();
+    }, 0);
+  };
+
+  const hasSelections = selectedTokens.length > 0 || selectedNFTs.length > 0 || selectedCollections.length > 0;
+
+  return (
+    <div className="space-y-6">
+      <PixelatedContainer>
+        <div className="p-6">
+          <h2 className="text-2xl font-pixel mb-4 text-deepsea-bright">
+            Select Assets
+          </h2>
+          <p className="text-gray-400 mb-6">
+            Select tokens and NFTs from your wallet that you want to airdrop.
+          </p>
+          
+          <WalletAssets />
+        </div>
+      </PixelatedContainer>
+      
+      <div className="flex justify-end">
+        <PixelatedButton 
+          onClick={handleContinue}
+          disabled={!hasSelections || loading}
+        >
+          {hasSelections ? 'Continue to Distribution Setup' : 'Select tokens or NFTs first'}
+        </PixelatedButton>
+      </div>
+    </div>
+  );
+}

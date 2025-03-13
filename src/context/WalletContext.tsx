@@ -1,6 +1,12 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { WalletInfo } from '@/types';
 import { toast } from 'sonner';
+import { 
+  connectNautilusWallet,
+  disconnectWallet as disconnectNautilusWallet,
+  isConnectedToNautilus,
+  isNautilusAvailable
+} from '@/lib/wallet';
 
 interface WalletContextType {
   wallet: WalletInfo;
@@ -15,19 +21,39 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [wallet, setWallet] = useState<WalletInfo>({ connected: false });
   const [connecting, setConnecting] = useState(false);
 
+  // Check if wallet is already connected on mount
+  useEffect(() => {
+    const checkWalletConnection = async () => {
+      if (isNautilusAvailable() && await isConnectedToNautilus()) {
+        try {
+          setConnecting(true);
+          const walletInfo = await connectNautilusWallet();
+          setWallet(walletInfo);
+        } catch (error) {
+          console.error('Error reconnecting to wallet:', error);
+          setWallet({ connected: false });
+        } finally {
+          setConnecting(false);
+        }
+      }
+    };
+
+    checkWalletConnection();
+  }, []);
+
   const connectWallet = async () => {
     setConnecting(true);
     
     try {
-      // In a real implementation, this would connect to the Nautilus wallet
-      // For now, we'll simulate connection after a short delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setWallet({
-        connected: true,
-        address: '9f4QF8AD1nQ3nJahHKqjnMGRQYq1uUHzYY9ogS8XQL4nYYg2H1f',
-        balance: 100.5
-      });
+      // Check if Nautilus is available
+      if (!isNautilusAvailable()) {
+        toast.error('Nautilus wallet extension not found. Please install it first.');
+        return;
+      }
+
+      // Connect to the wallet
+      const walletInfo = await connectNautilusWallet();
+      setWallet(walletInfo);
       
       toast.success('Wallet connected successfully!');
     } catch (error) {
@@ -39,6 +65,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   };
 
   const disconnectWallet = () => {
+    disconnectNautilusWallet();
     setWallet({ connected: false });
     toast.info('Wallet disconnected');
   };

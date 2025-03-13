@@ -12,6 +12,7 @@ import {
 } from '@/types';
 import { useWallet } from './WalletContext';
 import { toast } from 'sonner';
+import { CollectionService } from '@/services/CollectionService';
 
 interface AirdropContextType {
   tokens: Token[];
@@ -25,6 +26,7 @@ interface AirdropContextType {
   // Token functions
   selectToken: (tokenId: string) => void;
   unselectToken: (tokenId: string) => void;
+  setTokenDistributions: React.Dispatch<React.SetStateAction<TokenDistribution[]>>;
   setTokenDistributionType: (tokenId: string, type: TokenDistributionType) => void;
   setTokenAmount: (tokenId: string, amount: number) => void;
   
@@ -33,6 +35,7 @@ interface AirdropContextType {
   unselectCollection: (collectionId: string) => void;
   selectNFT: (nftId: string) => void;
   unselectNFT: (nftId: string) => void;
+  setNFTDistributions: React.Dispatch<React.SetStateAction<NFTDistribution[]>>;
   setNFTDistributionType: (entityId: string, type: NFTDistributionType) => void;
   
   // Recipient functions
@@ -52,37 +55,6 @@ interface AirdropContextType {
 
 const AirdropContext = createContext<AirdropContextType | undefined>(undefined);
 
-const mockTokens: Token[] = [
-  { id: 'erg', name: 'ERG', amount: 100, decimals: 9 },
-  { id: 'token1', name: 'SigUSD', amount: 500, decimals: 2 },
-  { id: 'token2', name: 'SigRSV', amount: 1000, decimals: 0 }
-];
-
-const mockNFTs: NFT[] = [
-  { id: 'nft1', name: 'Deep Sea Creature #1', imageUrl: '/nft1.png', collectionId: 'collection1', selected: false },
-  { id: 'nft2', name: 'Deep Sea Creature #2', imageUrl: '/nft2.png', collectionId: 'collection1', selected: false },
-  { id: 'nft3', name: 'Deep Sea Creature #3', imageUrl: '/nft3.png', collectionId: 'collection1', selected: false },
-  { id: 'nft4', name: 'Abyss Dweller #1', imageUrl: '/nft4.png', collectionId: 'collection2', selected: false },
-  { id: 'nft5', name: 'Abyss Dweller #2', imageUrl: '/nft5.png', collectionId: 'collection2', selected: false }
-];
-
-const mockCollections: Collection[] = [
-  { 
-    id: 'collection1', 
-    name: 'Deep Sea Creatures', 
-    description: 'Mysterious creatures from the deep sea',
-    nfts: mockNFTs.filter(nft => nft.collectionId === 'collection1'),
-    selected: false
-  },
-  { 
-    id: 'collection2', 
-    name: 'Abyss Dwellers', 
-    description: 'Entities that live in the darkest parts of the ocean',
-    nfts: mockNFTs.filter(nft => nft.collectionId === 'collection2'),
-    selected: false
-  }
-];
-
 export function AirdropProvider({ children }: { children: ReactNode }) {
   const { wallet } = useWallet();
   const [tokens, setTokens] = useState<Token[]>([]);
@@ -93,16 +65,34 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
+  // Load wallet assets when wallet connection changes
   useEffect(() => {
     if (wallet.connected) {
       setLoading(true);
       
-      setTimeout(() => {
-        setTokens(mockTokens);
-        setCollections(mockCollections);
-        setLoading(false);
-      }, 1500);
+      // Load real tokens and collections from wallet
+      Promise.all([
+        CollectionService.getWalletTokens(),
+        CollectionService.getWalletCollections()
+      ])
+        .then(([walletTokens, walletCollections]) => {
+          console.log('[AirdropContext] Loaded wallet assets:', {
+            tokens: walletTokens.length,
+            collections: walletCollections.length
+          });
+          
+          setTokens(walletTokens);
+          setCollections(walletCollections);
+        })
+        .catch(error => {
+          console.error('[AirdropContext] Error loading wallet assets:', error);
+          toast.error('Failed to load wallet assets');
+        })
+        .finally(() => {
+          setLoading(false);
+        });
     } else {
+      // Reset state when wallet disconnects
       setTokens([]);
       setCollections([]);
       setTokenDistributions([]);
@@ -111,145 +101,165 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     }
   }, [wallet.connected]);
 
+  // Log tokenDistributions changes
+  useEffect(() => {
+    console.log('[AirdropContext] tokenDistributions updated:', tokenDistributions.length);
+  }, [tokenDistributions]);
+
   const selectToken = (tokenId: string) => {
-    const token = tokens.find(t => t.id === tokenId);
-    if (!token) return;
+    console.log(`[AirdropContext] Selecting token: ${tokenId}`);
     
+    // Find the token in our tokens list
+    const token = tokens.find(t => t.id === tokenId);
+    if (!token) {
+      console.error(`[AirdropContext] Cannot select token ${tokenId}: Not found in wallet tokens`);
+      return;
+    }
+    
+    // Check if this token is already in distributions
+    if (tokenDistributions.some(dist => dist.token.id === tokenId)) {
+      console.log(`[AirdropContext] Token ${tokenId} already in distributions`);
+      return;
+    }
+    
+    // Calculate a reasonable default amount based on decimals
+    // For regular tokens with decimals, default to 1 token
+    // For native ERG or tokens without decimals, use a different default
+    const initialAmount = token.decimals > 0 
+      ? 1 // A single token (e.g., 1 SigUSD)
+      : token.name.toLowerCase() === 'erg' 
+        ? 0.1 // Default to 0.1 ERG if it's the native token
+        : 1; // Default for tokens without decimals
+        
+    // Convert to raw amount if needed based on decimals
+    // Don't convert here, we'll handle display formatting elsewhere
+    
+    // Add to distributions
     setTokenDistributions(prev => [
-      ...prev,
-      { token, type: 'total', amount: token.amount }
+      ...prev, 
+      { 
+        token,
+        type: 'total',
+        amount: initialAmount
+      }
     ]);
+    
+    console.log(`[AirdropContext] Token ${tokenId} added to distributions with initial amount: ${initialAmount}`);
   };
 
   const unselectToken = (tokenId: string) => {
-    setTokenDistributions(prev => prev.filter(td => td.token.id !== tokenId));
+    console.log(`[AirdropContext] Unselecting token: ${tokenId}`);
+    
+    setTokenDistributions(prev => 
+      prev.filter(distribution => distribution.token.id !== tokenId)
+    );
+    
+    console.log(`[AirdropContext] Token ${tokenId} removed from distributions`);
   };
 
   const setTokenDistributionType = (tokenId: string, type: TokenDistributionType) => {
+    console.log(`[AirdropContext] Setting token ${tokenId} distribution type to ${type}`);
+    
     setTokenDistributions(prev => 
-      prev.map(td => 
-        td.token.id === tokenId ? { ...td, type } : td
+      prev.map(distribution => 
+        distribution.token.id === tokenId 
+          ? { ...distribution, type } 
+          : distribution
       )
     );
   };
 
   const setTokenAmount = (tokenId: string, amount: number) => {
+    console.log(`[AirdropContext] Setting token ${tokenId} amount to ${amount}`);
+    
     setTokenDistributions(prev => 
-      prev.map(td => 
-        td.token.id === tokenId ? { ...td, amount } : td
+      prev.map(distribution => 
+        distribution.token.id === tokenId 
+          ? { ...distribution, amount } 
+          : distribution
       )
     );
   };
 
   const selectCollection = (collectionId: string) => {
-    setCollections(prev => 
-      prev.map(collection => 
-        collection.id === collectionId 
-          ? { 
-              ...collection, 
-              selected: true,
-              nfts: collection.nfts.map(nft => ({ ...nft, selected: true }))
-            } 
-          : collection
-      )
-    );
+    console.log(`[AirdropContext] Selecting collection: ${collectionId}`);
     
+    // Find the collection in our collections list
     const collection = collections.find(c => c.id === collectionId);
-    if (collection) {
-      setNFTDistributions(prev => [
-        ...prev,
-        { collection, type: 'random' }
-      ]);
+    if (!collection) {
+      console.error(`[AirdropContext] Cannot select collection ${collectionId}: Not found`);
+      return;
     }
+    
+    // Check if this collection is already in distributions
+    if (nftDistributions.some(dist => dist.collection?.id === collectionId)) {
+      console.log(`[AirdropContext] Collection ${collectionId} already in distributions`);
+      return;
+    }
+    
+    // Add to distributions
+    setNFTDistributions(prev => [
+      ...prev, 
+      { 
+        collection,
+        type: '1-to-1'
+      }
+    ]);
+    
+    console.log(`[AirdropContext] Collection ${collectionId} added to distributions`);
   };
 
   const unselectCollection = (collectionId: string) => {
-    setCollections(prev => 
-      prev.map(collection => 
-        collection.id === collectionId 
-          ? { 
-              ...collection, 
-              selected: false,
-              nfts: collection.nfts.map(nft => ({ ...nft, selected: false }))
-            } 
-          : collection
-      )
-    );
+    console.log(`[AirdropContext] Unselecting collection: ${collectionId}`);
     
     setNFTDistributions(prev => 
-      prev.filter(nd => nd.collection?.id !== collectionId)
+      prev.filter(distribution => distribution.collection?.id !== collectionId)
     );
+    
+    console.log(`[AirdropContext] Collection ${collectionId} removed from distributions`);
   };
 
   const selectNFT = (nftId: string) => {
-    let targetNFT: NFT | undefined;
-    let collectionId: string | undefined;
+    console.log(`[AirdropContext] Selecting NFT: ${nftId}`);
     
+    // Find the NFT in our collections
+    let nft: NFT | undefined;
     for (const collection of collections) {
-      const nft = collection.nfts.find(n => n.id === nftId);
-      if (nft) {
-        targetNFT = nft;
-        collectionId = collection.id;
-        break;
+      nft = collection.nfts.find(n => n.id === nftId);
+      if (nft) break;
+    }
+    
+    if (!nft) {
+      console.error(`[AirdropContext] Cannot select NFT ${nftId}: Not found`);
+      return;
+    }
+    
+    // Check if this NFT is already in distributions
+    if (nftDistributions.some(dist => dist.nft?.id === nftId)) {
+      console.log(`[AirdropContext] NFT ${nftId} already in distributions`);
+      return;
+    }
+    
+    // Add to distributions
+    setNFTDistributions(prev => [
+      ...prev, 
+      { 
+        nft,
+        type: '1-to-1'
       }
-    }
+    ]);
     
-    if (!targetNFT || !collectionId) return;
-    
-    setCollections(prev => 
-      prev.map(collection => 
-        collection.id === collectionId
-          ? {
-              ...collection,
-              nfts: collection.nfts.map(nft => 
-                nft.id === nftId ? { ...nft, selected: true } : nft
-              )
-            }
-          : collection
-      )
-    );
-    
-    const existingCollectionDistribution = nftDistributions.find(
-      nd => nd.collection?.id === collectionId
-    );
-    
-    if (!existingCollectionDistribution) {
-      setNFTDistributions(prev => [
-        ...prev,
-        { nft: { ...targetNFT, selected: true }, type: '1-to-1' }
-      ]);
-    }
+    console.log(`[AirdropContext] NFT ${nftId} added to distributions`);
   };
 
   const unselectNFT = (nftId: string) => {
-    let collectionId: string | undefined;
-    
-    for (const collection of collections) {
-      const nft = collection.nfts.find(n => n.id === nftId);
-      if (nft) {
-        collectionId = collection.id;
-        break;
-      }
-    }
-    
-    if (!collectionId) return;
-    
-    setCollections(prev => 
-      prev.map(collection => 
-        collection.id === collectionId
-          ? {
-              ...collection,
-              nfts: collection.nfts.map(nft => 
-                nft.id === nftId ? { ...nft, selected: false } : nft
-              )
-            }
-          : collection
-      )
-    );
+    console.log(`[AirdropContext] Unselecting NFT: ${nftId}`);
     
     setNFTDistributions(prev => 
-      prev.filter(nd => nd.nft?.id !== nftId)
+      prev.filter(distribution => distribution.nft?.id !== nftId)
     );
+    
+    console.log(`[AirdropContext] NFT ${nftId} removed from distributions`);
   };
 
   const setNFTDistributionType = (entityId: string, type: NFTDistributionType) => {
@@ -347,13 +357,36 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   };
 
   const nextStep = () => {
+    console.log('[AirdropContext] Moving to next step', {
+      currentStep,
+      tokenDistributions: tokenDistributions.length,
+      nftDistributions: nftDistributions.length
+    });
+    
+    // Skip validation for the first step (asset selection) - user should be able to proceed
+    // even with empty selections, as we'll populate them on demand in the handleContinue function
+    
+    // Only validate when moving from step 2 (distributions) to step 3 (recipients)
+    if (currentStep === 2 && tokenDistributions.length === 0 && nftDistributions.length === 0) {
+      toast.error('Please select at least one token or NFT to airdrop');
+      return;
+    }
+    
+    // Validate recipients when moving to the final step
+    if (currentStep === 3 && recipients.length === 0) {
+      toast.error('Please add at least one recipient');
+      return;
+    }
+    
     if (currentStep < 4) {
+      console.log(`[AirdropContext] Advancing from step ${currentStep} to ${currentStep + 1}`);
       setCurrentStep(prev => prev + 1);
     }
   };
 
   const prevStep = () => {
     if (currentStep > 1) {
+      console.log(`[AirdropContext] Going back from step ${currentStep} to ${currentStep - 1}`);
       setCurrentStep(prev => prev - 1);
     }
   };
@@ -370,6 +403,8 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     
     try {
+      // In a real implementation, we would use the AirdropService here
+      // For now, simulate with a delay
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       const txId = '9f5ZKbECR3HHtUbCR5UGQwkYGGt6K5VHAiGQw89RqDHHZ7jnSW1';
@@ -385,6 +420,14 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Include this effect to log whenever tokenDistributions change
+  useEffect(() => {
+    console.log('[AirdropContext] Token distributions updated:', {
+      length: tokenDistributions.length,
+      distributions: tokenDistributions.map(d => `${d.token.name} (${d.amount})`)
+    });
+  }, [tokenDistributions]);
+
   return (
     <AirdropContext.Provider
       value={{
@@ -397,12 +440,14 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
         currentStep,
         selectToken,
         unselectToken,
+        setTokenDistributions,
         setTokenDistributionType,
         setTokenAmount,
         selectCollection,
         unselectCollection,
         selectNFT,
         unselectNFT,
+        setNFTDistributions,
         setNFTDistributionType,
         addRecipient,
         removeRecipient,

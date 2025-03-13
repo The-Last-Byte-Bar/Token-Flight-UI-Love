@@ -58,9 +58,10 @@ class MiningPoolApi {
       // Filter miners based on options
       let filteredMiners = miners;
       
-      if (options?.minHashrate) {
+      if (options?.minHashrate !== undefined) {
+        const minHashrateValue = options.minHashrate;
         filteredMiners = filteredMiners.filter((miner: any) => 
-          miner.hashrate >= options.minHashrate
+          miner.hashrate >= minHashrateValue
         );
       }
       

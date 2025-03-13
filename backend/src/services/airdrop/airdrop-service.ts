@@ -2,6 +2,7 @@ import { Amount } from '@fleet-sdk/common';
 import { buildBatchDistributionTx, buildTokenTransferTx } from '../transaction/transaction-builder';
 import { submitTransaction } from '../wallet/wallet-connector';
 import ergoPlatformApi from '../api/ergo-platform-api';
+import { transactionHistoryService, TransactionStatus } from './transaction-history.service';
 
 /**
  * Interface for token distribution configuration
@@ -121,9 +122,9 @@ export class AirdropService {
    * Execute the airdrop
    * @param config Airdrop configuration
    * @param senderAddress Sender wallet address
-   * @returns Transaction ID
+   * @returns Object with transaction ID and record ID for tracking
    */
-  async executeAirdrop(config: AirdropConfig, senderAddress: string): Promise<string> {
+  async executeAirdrop(config: AirdropConfig, senderAddress: string): Promise<{ txId: string; recordId: string }> {
     // Validate configuration
     const validation = this.validateAirdropConfig(config);
     if (!validation.valid) {
@@ -137,110 +138,211 @@ export class AirdropService {
       throw new Error('No input boxes found for sender address');
     }
 
-    // Process token distributions
-    const tokenTxPromises = config.tokenDistributions.map(async (dist) => {
-      if (dist.type === 'total') {
-        // Calculate amount per recipient
-        const amountPerRecipient = dist.amount / config.recipients.length;
-        
-        // Build batch distribution transaction
-        const unsignedTx = buildBatchDistributionTx(
-          senderAddress,
-          config.recipients.map(r => r.address),
-          dist.tokenId,
-          amountPerRecipient as unknown as Amount,
-          inputs,
-          senderAddress
-        );
-        
-        // Sign and submit transaction
-        return await submitTransaction(unsignedTx);
-      } else if (dist.type === 'per-user') {
-        // Build batch distribution transaction
-        const unsignedTx = buildBatchDistributionTx(
-          senderAddress,
-          config.recipients.map(r => r.address),
-          dist.tokenId,
-          dist.amount as unknown as Amount,
-          inputs,
-          senderAddress
-        );
-        
-        // Sign and submit transaction
-        return await submitTransaction(unsignedTx);
-      }
-      
-      throw new Error(`Unsupported token distribution type: ${dist.type}`);
-    });
+    // Initialize first transaction to create a record
+    const initialTxId = await this.processTokenDistribution(
+      config.tokenDistributions[0] || { tokenId: '', amount: 0, type: 'total' },
+      config.recipients,
+      senderAddress,
+      inputs
+    );
 
-    // Process NFT distributions
-    const nftTxPromises = config.nftDistributions.map(async (dist) => {
-      if (dist.type === '1-to-1' && dist.nftIds && dist.nftIds.length > 0) {
-        // For 1-to-1 mapping, pair each NFT with a recipient
-        const txPromises = dist.nftIds.map(async (nftId, index) => {
-          if (index >= config.recipients.length) {
-            throw new Error('Not enough recipients for 1-to-1 NFT distribution');
+    // Create a transaction record
+    const recordId = transactionHistoryService.createTransaction(initialTxId, senderAddress, config);
+
+    try {
+      // Process token distributions
+      let completedDistributions = 0;
+      
+      for (let i = 0; i < config.tokenDistributions.length; i++) {
+        const dist = config.tokenDistributions[i];
+        
+        // Update progress
+        transactionHistoryService.updateTransactionProgress(recordId, {
+          currentTokenId: dist.tokenId,
+          currentDistributionType: dist.type
+        });
+        
+        // Skip the first one since we already processed it
+        if (i > 0) {
+          const txId = await this.processTokenDistribution(dist, config.recipients, senderAddress, inputs);
+          
+          // Add transaction ID to record
+          transactionHistoryService.updateTransactionProgress(recordId, {
+            additionalTxId: txId
+          });
+        }
+        
+        completedDistributions++;
+        
+        // Update progress
+        transactionHistoryService.updateTransactionProgress(recordId, {
+          completedDistributions
+        });
+      }
+
+      // Process NFT distributions
+      for (const dist of config.nftDistributions) {
+        // Update progress
+        transactionHistoryService.updateTransactionProgress(recordId, {
+          currentDistributionType: dist.type
+        });
+        
+        if (dist.type === '1-to-1' && dist.nftIds && dist.nftIds.length > 0) {
+          // For 1-to-1 mapping, pair each NFT with a recipient
+          for (let i = 0; i < dist.nftIds.length; i++) {
+            const nftId = dist.nftIds[i];
+            
+            // Update progress with current NFT
+            transactionHistoryService.updateTransactionProgress(recordId, {
+              currentTokenId: nftId
+            });
+            
+            if (i >= config.recipients.length) {
+              throw new Error('Not enough recipients for 1-to-1 NFT distribution');
+            }
+            
+            const recipientAddress = config.recipients[i].address;
+            
+            // Build token transfer transaction
+            const unsignedTx = buildTokenTransferTx(
+              senderAddress,
+              recipientAddress,
+              nftId,
+              1n, // NFTs have amount of 1
+              inputs,
+              senderAddress
+            );
+            
+            // Sign and submit transaction
+            const txId = await submitTransaction(unsignedTx);
+            
+            // Add transaction ID to record
+            transactionHistoryService.updateTransactionProgress(recordId, {
+              additionalTxId: txId
+            });
+            
+            completedDistributions++;
+            
+            // Update progress
+            transactionHistoryService.updateTransactionProgress(recordId, {
+              completedDistributions
+            });
           }
+        } else if (dist.type === 'random' && dist.nftIds && dist.nftIds.length > 0) {
+          // Shuffle NFTs and assign to recipients randomly
+          const shuffledNfts = [...dist.nftIds].sort(() => Math.random() - 0.5);
           
-          const recipientAddress = config.recipients[index].address;
-          
-          // Build token transfer transaction
-          const unsignedTx = buildTokenTransferTx(
-            senderAddress,
-            recipientAddress,
-            nftId,
-            1n, // NFTs have amount of 1
-            inputs,
-            senderAddress
-          );
-          
-          // Sign and submit transaction
-          return await submitTransaction(unsignedTx);
-        });
-        
-        return await Promise.all(txPromises);
-      } else if (dist.type === 'random' && dist.nftIds && dist.nftIds.length > 0) {
-        // Shuffle NFTs and assign to recipients randomly
-        const shuffledNfts = [...dist.nftIds].sort(() => Math.random() - 0.5);
-        
-        const txPromises = shuffledNfts.map(async (nftId, index) => {
-          // Use modulo to cycle through recipients if there are more NFTs than recipients
-          const recipientIndex = index % config.recipients.length;
-          const recipientAddress = config.recipients[recipientIndex].address;
-          
-          // Build token transfer transaction
-          const unsignedTx = buildTokenTransferTx(
-            senderAddress,
-            recipientAddress,
-            nftId,
-            1n, // NFTs have amount of 1
-            inputs,
-            senderAddress
-          );
-          
-          // Sign and submit transaction
-          return await submitTransaction(unsignedTx);
-        });
-        
-        return await Promise.all(txPromises);
+          for (let i = 0; i < shuffledNfts.length; i++) {
+            const nftId = shuffledNfts[i];
+            
+            // Update progress with current NFT
+            transactionHistoryService.updateTransactionProgress(recordId, {
+              currentTokenId: nftId
+            });
+            
+            // Use modulo to cycle through recipients if there are more NFTs than recipients
+            const recipientIndex = i % config.recipients.length;
+            const recipientAddress = config.recipients[recipientIndex].address;
+            
+            // Build token transfer transaction
+            const unsignedTx = buildTokenTransferTx(
+              senderAddress,
+              recipientAddress,
+              nftId,
+              1n, // NFTs have amount of 1
+              inputs,
+              senderAddress
+            );
+            
+            // Sign and submit transaction
+            const txId = await submitTransaction(unsignedTx);
+            
+            // Add transaction ID to record
+            transactionHistoryService.updateTransactionProgress(recordId, {
+              additionalTxId: txId
+            });
+            
+            completedDistributions++;
+            
+            // Update progress
+            transactionHistoryService.updateTransactionProgress(recordId, {
+              completedDistributions
+            });
+          }
+        } else {
+          throw new Error(`Unsupported NFT distribution type: ${dist.type}`);
+        }
       }
-      
-      throw new Error(`Unsupported NFT distribution type: ${dist.type}`);
-    });
 
-    // Execute all transactions and collect results
-    const tokenTxResults = await Promise.all(tokenTxPromises);
-    const nftTxResults = await Promise.all(nftTxPromises);
-    
-    // Flatten and filter results to get transaction IDs
-    const txIds = [...tokenTxResults, ...nftTxResults.flat()].filter(Boolean);
-    
-    if (txIds.length === 0) {
-      throw new Error('No transactions were successfully submitted');
+      // Mark transaction as confirmed
+      transactionHistoryService.updateTransactionStatus(recordId, TransactionStatus.CONFIRMED);
+
+      return { 
+        txId: initialTxId,
+        recordId
+      };
+    } catch (error) {
+      // Mark transaction as failed
+      transactionHistoryService.updateTransactionStatus(
+        recordId, 
+        TransactionStatus.FAILED, 
+        { failureReason: error instanceof Error ? error.message : 'Unknown error' }
+      );
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Process a token distribution
+   * @param dist Token distribution configuration
+   * @param recipients Recipients list
+   * @param senderAddress Sender address
+   * @param inputs Input boxes
+   * @returns Transaction ID
+   */
+  private async processTokenDistribution(
+    dist: TokenDistribution,
+    recipients: Recipient[],
+    senderAddress: string,
+    inputs: any[]
+  ): Promise<string> {
+    if (!dist.tokenId) {
+      throw new Error('Token ID is required for distribution');
     }
     
-    // Return the first transaction ID as reference
-    return txIds[0];
+    if (dist.type === 'total') {
+      // Calculate amount per recipient
+      const amountPerRecipient = dist.amount / recipients.length;
+      
+      // Build batch distribution transaction
+      const unsignedTx = buildBatchDistributionTx(
+        senderAddress,
+        recipients.map(r => r.address),
+        dist.tokenId,
+        amountPerRecipient as unknown as Amount,
+        inputs,
+        senderAddress
+      );
+      
+      // Sign and submit transaction
+      return await submitTransaction(unsignedTx);
+    } else if (dist.type === 'per-user') {
+      // Build batch distribution transaction
+      const unsignedTx = buildBatchDistributionTx(
+        senderAddress,
+        recipients.map(r => r.address),
+        dist.tokenId,
+        dist.amount as unknown as Amount,
+        inputs,
+        senderAddress
+      );
+      
+      // Sign and submit transaction
+      return await submitTransaction(unsignedTx);
+    }
+    
+    throw new Error(`Unsupported token distribution type: ${dist.type}`);
   }
 }
 

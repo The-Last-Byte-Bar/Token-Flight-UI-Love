@@ -1,18 +1,31 @@
 version: '3.8'
 
 services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=http://localhost/api
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - PORT=3000
       - ERGO_PLATFORM_API_URL=https://api.ergoplatform.com/api/v1
     volumes:
-      - ./backend:/usr/src/app
-      - /usr/src/app/node_modules
-    command: npm run dev
-    restart: unless-stopped 
+      - ./backend/data:/usr/src/app/data
+    restart: unless-stopped
+
+volumes:
+  backend_node_modules: 
