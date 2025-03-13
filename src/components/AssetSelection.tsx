@@ -102,28 +102,31 @@ export default function AssetSelection() {
         nfts: nftDistributionsFromNFTs.map(d => d.nft?.name)
       });
       
-      // First set token distributions
+      // Set token and NFT distributions and wait for state to be updated before navigating
+      const allNftDistributions = [...nftDistributionsFromCollections, ...nftDistributionsFromNFTs];
+      
+      // CRITICAL FIX: Set distributions IMMEDIATELY and SYNCHRONOUSLY
       if (newTokenDistributions.length > 0) {
+        // Directly update token distributions
         setTokenDistributions(newTokenDistributions);
-        debug('Token distributions set', { count: newTokenDistributions.length });
+        debug('Token distributions set synchronously', { count: newTokenDistributions.length });
       }
       
-      // Then set NFT distributions
-      if (nftDistributionsFromCollections.length > 0 || nftDistributionsFromNFTs.length > 0) {
-        const allNftDistributions = [...nftDistributionsFromCollections, ...nftDistributionsFromNFTs];
+      if (allNftDistributions.length > 0) {
+        // Directly update NFT distributions
         setNFTDistributions(allNftDistributions);
-        debug('NFT distributions set', { count: allNftDistributions.length });
+        debug('NFT distributions set synchronously', { count: allNftDistributions.length });
       }
       
-      // Ensure distributions are set before navigating
+      // Add a delay to ensure state updates are processed before navigation
       setTimeout(() => {
-        debug('Navigating to next step', {
+        debug('Navigating to next step after setting distributions', {
           tokenDistributionsCount: newTokenDistributions.length,
-          nftDistributionsCount: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
+          nftDistributionsCount: allNftDistributions.length
         });
         nextStep();
         setIsSubmitting(false);
-      }, 300);
+      }, 500); // Increased timeout for state updates
     } catch (error) {
       console.error('Error setting distributions:', error);
       toast.error('Something went wrong preparing your distributions. Please try again.');

@@ -32,4 +32,12 @@ export function createDebugLogger(namespace: string) {
   };
 }
 
+/**
+ * Force the browser to flush all pending logs to the console
+ * Useful when debugging async operations that might not complete
+ */
+export function flushLogs() {
+  console.log('---------- LOG CHECKPOINT ----------');
+}
+
 export default useDebugLog;

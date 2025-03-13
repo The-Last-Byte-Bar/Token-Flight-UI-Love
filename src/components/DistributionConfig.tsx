@@ -17,22 +17,24 @@ export default function DistributionConfig() {
   // Debug log when distributions change
   useEffect(() => {
     debug('Distributions loaded:', {
+      tokenDistributionsCount: tokenDistributions.length,
       tokenDistributions: tokenDistributions.map(d => ({
         name: d.token.name,
         id: d.token.id,
         type: d.type,
         amount: d.amount
       })),
+      nftDistributionsCount: nftDistributions.length,
       nftDistributions: nftDistributions.map(d => ({
-        name: d.collection?.name || d.nft?.name,
-        id: d.collection?.id || d.nft?.id,
+        name: d.collection?.name || d.nft?.name || 'Unknown',
+        id: d.collection?.id || d.nft?.id || 'Unknown ID',
         type: d.type
       }))
     });
   }, [tokenDistributions, nftDistributions]);
 
-  const hasTokens = tokenDistributions.length > 0;
-  const hasNFTs = nftDistributions.length > 0;
+  const hasTokens = tokenDistributions && tokenDistributions.length > 0;
+  const hasNFTs = nftDistributions && nftDistributions.length > 0;
 
   return (
     <div className="space-y-6">
@@ -72,7 +74,7 @@ export default function DistributionConfig() {
               <div className="space-y-4">
                 {nftDistributions.map((distribution, index) => (
                   <NFTDistributionForm 
-                    key={`nft-dist-${distribution.collection?.id || distribution.nft?.id}-${index}`} 
+                    key={`nft-dist-${distribution.collection?.id || distribution.nft?.id || index}-${index}`} 
                     distribution={distribution} 
                   />
                 ))}
