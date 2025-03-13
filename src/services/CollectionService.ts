@@ -1,4 +1,3 @@
-
 import { Collection, NFT, Token } from "@/types";
 import { isConnectedToNautilus, isNautilusAvailable } from "@/lib/wallet";
 import { toast } from "sonner";
@@ -252,7 +251,7 @@ export class CollectionService {
       }
       
       // Group NFTs by collection
-      nfts.forEach(nft => {
+      const processNftForCollection = async (nft: NFT) => {
         const collId = nft.collectionId || "uncategorized";
         
         if (collections.has(collId)) {
@@ -267,13 +266,17 @@ export class CollectionService {
             
           // Try to get a better collection name from a token with same ID
           if (collId !== "uncategorized") {
-            // This might be a token ID that represents the collection
-            const response = await fetch(`${TOKEN_METADATA_API}/${collId}`);
-            if (response.ok) {
-              const tokenData = await response.json();
-              if (tokenData && tokenData.name) {
-                collectionName = tokenData.name;
+            try {
+              // This might be a token ID that represents the collection
+              const response = await fetch(`${TOKEN_METADATA_API}/${collId}`);
+              if (response.ok) {
+                const tokenData = await response.json();
+                if (tokenData && tokenData.name) {
+                  collectionName = tokenData.name;
+                }
               }
+            } catch (error) {
+              console.warn(`Error fetching collection name for ${collId}:`, error);
             }
           }
           
@@ -284,7 +287,12 @@ export class CollectionService {
             selected: false
           });
         }
-      });
+      };
+      
+      // Process all NFTs
+      for (const nft of nfts) {
+        await processNftForCollection(nft);
+      }
       
       // Convert to array and sort collections by size (most NFTs first)
       return Array.from(collections.values())
