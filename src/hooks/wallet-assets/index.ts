@@ -1,0 +1,2 @@
+
+export { useWalletAssets } from './useWalletAssets';
