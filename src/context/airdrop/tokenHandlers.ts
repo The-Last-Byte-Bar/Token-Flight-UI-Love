@@ -34,7 +34,7 @@ export const handleSelectToken = (
     ...tokenDistributions, 
     { 
       token,
-      type: 'total',
+      type: 'total' as TokenDistributionType, // Explicitly cast to TokenDistributionType
       amount: initialAmount
     }
   ];

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useWalletAssets } from '@/hooks/useWalletAssets';
 import { useAirdrop } from '@/context/AirdropContext';
@@ -63,7 +62,7 @@ export function WalletAssets() {
     const isCurrentlySelected = selectedTokens.some(t => t.id === tokenId);
     
     // Toggle in wallet assets
-    const { selection } = toggleTokenSelection(tokenId);
+    toggleTokenSelection(tokenId);
     
     // Sync with airdrop context based on the new selection state
     if (!isCurrentlySelected) {
@@ -242,4 +241,4 @@ export function WalletAssets() {
       </Tabs>
     </div>
   );
-} 
+}
