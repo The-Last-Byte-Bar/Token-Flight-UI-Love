@@ -1,3 +1,4 @@
+
 import { Collection, NFT, Token } from "@/types";
 import { isConnectedToNautilus, isNautilusAvailable } from "@/lib/wallet";
 import { toast } from "sonner";
@@ -142,15 +143,28 @@ export class CollectionService {
       // Process each potential NFT
       for (const nft of potentialNFTs) {
         try {
-          // Use the CORRECT endpoint format for fetching box data by token ID
-          const response = await fetch(`${BOX_METADATA_API}/${nft.tokenId}`);
+          // Use the correct endpoint format for fetching box data by token ID
+          const response = await fetch(`${BOX_METADATA_API}/byTokenId/${nft.tokenId}`);
           
           if (!response.ok) {
             console.warn(`Failed to fetch box data for token ${nft.tokenId}`);
             continue;
           }
           
-          const boxData = await response.json();
+          const boxesData = await response.json();
+          
+          // The endpoint returns items array
+          if (!boxesData.items || boxesData.items.length === 0) {
+            console.warn(`No boxes found for token ${nft.tokenId}`);
+            continue;
+          }
+          
+          // Find the box where this token was minted (it will have the NFT metadata)
+          const boxData = boxesData.items.find((box: any) => 
+            box.assets && box.assets.some((asset: any) => 
+              asset.tokenId === nft.tokenId && asset.amount === 1
+            )
+          ) || boxesData.items[0];
           
           // Extract metadata from registers
           let name = nft.name || nft.tokenId.substring(0, 8);
@@ -176,14 +190,14 @@ export class CollectionService {
                 
                 if (r7Value) {
                   // Remove the "0e20" prefix if present (common in Ergo registers for Coll[Byte])
-                  const hexValue = r7Value.startsWith("0e20") ? r7Value.substring(4) : r7Value;
+                  const tokenId = r7Value.startsWith("0e20") ? r7Value.substring(4) : r7Value;
                   
                   // Check if this matches one of the token IDs in the box assets
                   // If it does, it's a collection marker
-                  const matchingAsset = boxData.assets?.find((a: any) => a.tokenId === hexValue);
+                  const matchingAsset = boxData.assets?.find((a: any) => a.tokenId === tokenId);
                   
                   if (matchingAsset) {
-                    collectionId = hexValue;
+                    collectionId = tokenId;
                     collectionLookup.set(nft.tokenId, collectionId);
                     console.log(`NFT ${name} (${nft.tokenId}) belongs to collection ${collectionId}`);
                   }
@@ -197,6 +211,15 @@ export class CollectionService {
             try {
               if (registers.R5 && registers.R5.renderedValue) {
                 description = registers.R5.renderedValue;
+                
+                // Sometimes collection info is in R5 as "Collection: X"
+                if (typeof description === 'string' && description.includes('Collection:')) {
+                  const parts = description.split('Collection:');
+                  if (parts.length > 1 && !collectionId) {
+                    const collName = parts[1].trim();
+                    collectionId = `collection_${Buffer.from(collName).toString('hex')}`;
+                  }
+                }
               }
             } catch (e) {}
             
@@ -238,9 +261,21 @@ export class CollectionService {
           collection.nfts.push(nft);
         } else {
           // Create new collection
-          const collectionName = collId === "uncategorized" 
+          let collectionName = collId === "uncategorized" 
             ? "Uncategorized" 
             : `Collection #${collections.size + 1}`;
+            
+          // Try to get a better collection name from a token with same ID
+          if (collId !== "uncategorized") {
+            // This might be a token ID that represents the collection
+            const response = await fetch(`${TOKEN_METADATA_API}/${collId}`);
+            if (response.ok) {
+              const tokenData = await response.json();
+              if (tokenData && tokenData.name) {
+                collectionName = tokenData.name;
+              }
+            }
+          }
           
           collections.set(collId, {
             id: collId,

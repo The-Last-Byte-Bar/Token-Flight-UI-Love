@@ -36,9 +36,24 @@ class ErgoPlatformApi {
    */
   async getBoxByTokenId(tokenId: string) {
     try {
-      // Corrected endpoint for getting box by token ID
-      const response = await this.client.get(`/boxes/${tokenId}`);
-      return response.data;
+      // Use /boxes/byTokenId/{tokenId} to get boxes containing the token
+      const response = await this.client.get(`/boxes/byTokenId/${tokenId}`);
+      
+      // The endpoint returns an array of boxes, take the first one that contains the token as an asset
+      const boxes = response.data.items || [];
+      
+      if (boxes.length === 0) {
+        throw new Error(`No boxes found for token ID: ${tokenId}`);
+      }
+      
+      // Find the box where this token was minted (it will have the NFT metadata)
+      const boxWithToken = boxes.find((box: any) => 
+        box.assets && box.assets.some((asset: any) => 
+          asset.tokenId === tokenId && asset.amount === 1
+        )
+      );
+      
+      return boxWithToken || boxes[0];
     } catch (error) {
       console.error(`Failed to get box for token ID: ${tokenId}`, error);
       throw error;

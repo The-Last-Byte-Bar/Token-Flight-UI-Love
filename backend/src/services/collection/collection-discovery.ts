@@ -51,19 +51,31 @@ function extractCollectionInfo(boxData: any): {
   };
   
   // Check for R7 register which often contains the collection ID
-  if (registers.R7 && registers.R7.renderedValue) {
-    const r7Value = registers.R7.renderedValue;
-    
-    // Check if any asset's tokenId matches the R7 value
-    // This indicates this token is part of a collection
-    const matchingAsset = assets.find((asset: any) => asset.tokenId === r7Value);
-    
-    if (matchingAsset) {
-      collectionInfo.collectionId = r7Value;
-      collectionInfo.collectionName = matchingAsset.name || `Collection ${r7Value.substring(0, 8)}`;
-      collectionInfo.isPartOfCollection = true;
+  if (registers.R7) {
+    try {
+      // Get the rendered or serialized value from R7
+      const r7Value = registers.R7.renderedValue || registers.R7.serializedValue;
       
-      console.log(`Found NFT in collection: ${collectionInfo.collectionName} (${r7Value})`);
+      if (r7Value) {
+        // If it starts with 0e20, it's likely a Coll[Byte] with a token ID (remove prefix)
+        const tokenId = r7Value.startsWith('0e20') ? r7Value.substring(4) : r7Value;
+        
+        console.log(`Found R7 register with value: ${tokenId}`);
+        
+        // Check if any asset's tokenId matches the R7 value
+        // This indicates this token is part of a collection
+        const matchingAsset = assets.find((asset: any) => asset.tokenId === tokenId);
+        
+        if (matchingAsset) {
+          collectionInfo.collectionId = tokenId;
+          collectionInfo.collectionName = matchingAsset.name || `Collection ${tokenId.substring(0, 8)}`;
+          collectionInfo.isPartOfCollection = true;
+          
+          console.log(`Found NFT in collection: ${collectionInfo.collectionName} (${tokenId})`);
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing R7 register:', error);
     }
   }
   
@@ -121,7 +133,19 @@ export async function discoverCollections(tokens: TokenInfo[]): Promise<{
   // Process each potential NFT
   for (const token of potentialNfts) {
     try {
+      console.log(`Fetching box data for token: ${token.tokenId}`);
       const boxData = await ergoPlatformApi.getBoxByTokenId(token.tokenId);
+      
+      if (!boxData) {
+        console.warn(`No box data found for token ${token.tokenId}, treating as standalone NFT`);
+        standaloneNfts.push({
+          ...token,
+          isNFT: true,
+          metadata: {}
+        });
+        continue;
+      }
+      
       const { collectionId, collectionName, isPartOfCollection, metadata } = extractCollectionInfo(boxData);
       
       // Create NFT object
