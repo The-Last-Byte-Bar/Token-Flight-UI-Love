@@ -1,3 +1,4 @@
+
 import { NFTDistribution, NFTDistributionType } from '@/types';
 import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedButton from './PixelatedButton';
@@ -17,12 +18,13 @@ export default function NFTDistributionForm({ distribution }: NFTDistributionFor
     ? distribution.collection.nfts.filter(n => n.selected).length 
     : 1;
   
+  const entityId = distribution.collection 
+    ? distribution.collection.id
+    : distribution.nft?.id || '';
+    
   const updateDistributionType = (type: NFTDistributionType) => {
-    if (distribution.collection) {
-      setNFTDistributionType(distribution.collection.id, type);
-    } else if (distribution.nft) {
-      setNFTDistributionType(distribution.nft.id, type);
-    }
+    console.log(`[NFTDistributionForm] Updating distribution type to ${type} for entity: ${entityId}`);
+    setNFTDistributionType(entityId, type);
   };
   
   return (
@@ -61,4 +63,4 @@ export default function NFTDistributionForm({ distribution }: NFTDistributionFor
       </div>
     </div>
   );
-} 
+}

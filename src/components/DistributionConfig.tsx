@@ -21,17 +21,21 @@ export default function DistributionConfig() {
   const [activeTab, setActiveTab] = useState('tokens');
   const [isInitialized, setIsInitialized] = useState(false);
   
-  // Check if we have distributions on mount
+  // Check if we have distributions on mount and log them
   useEffect(() => {
     console.log('[DistributionConfig] Mounted with distributions:', {
       tokenDistributions: tokenDistributions.length,
       nftDistributions: nftDistributions.length
     });
     
-    // Mark as initialized after first render
+    // Mark as initialized after a longer delay to ensure context is fully loaded
     setTimeout(() => {
       setIsInitialized(true);
-    }, 100);
+      console.log('[DistributionConfig] Initialization complete, distributions:', {
+        tokenDistributions: tokenDistributions.length,
+        nftDistributions: nftDistributions.length
+      });
+    }, 250);
   }, []);
   
   // Log when distributions change
@@ -46,12 +50,12 @@ export default function DistributionConfig() {
 
   // Set active tab based on which distributions we have
   useEffect(() => {
-    if (activeTab === 'tokens' && tokenDistributions.length === 0 && nftDistributions.length > 0) {
-      setActiveTab('nfts');
-    } else if (activeTab === 'nfts' && nftDistributions.length === 0 && tokenDistributions.length > 0) {
+    if (tokenDistributions.length > 0 && activeTab !== 'tokens') {
       setActiveTab('tokens');
+    } else if (tokenDistributions.length === 0 && nftDistributions.length > 0 && activeTab !== 'nfts') {
+      setActiveTab('nfts');
     }
-  }, [tokenDistributions.length, nftDistributions.length, activeTab]);
+  }, [tokenDistributions.length, nftDistributions.length]);
 
   const updateTokenDistribution = (tokenId: string, updates: Partial<TokenDistribution>) => {
     if (updates.type) {
@@ -76,6 +80,16 @@ export default function DistributionConfig() {
   };
 
   const hasAnyDistributions = tokenDistributions.length > 0 || nftDistributions.length > 0;
+
+  // Added debugging for loading state
+  const loadingView = !isInitialized || (!hasAnyDistributions && tokenDistributions.length === 0 && nftDistributions.length === 0);
+  console.log('[DistributionConfig] Render state:', { 
+    isInitialized, 
+    hasAnyDistributions,
+    loadingView,
+    tokenDistLen: tokenDistributions.length,
+    nftDistLen: nftDistributions.length
+  });
 
   return (
     <div className="space-y-6">

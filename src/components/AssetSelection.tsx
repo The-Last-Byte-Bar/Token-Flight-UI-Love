@@ -82,27 +82,28 @@ export default function AssetSelection() {
       nfts: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
     });
     
-    // Clear existing distributions before setting new ones
+    // Clear existing distributions first
     setTokenDistributions([]);
     setNFTDistributions([]);
     
-    // Add small delay to ensure state is cleared
+    // Important: Use longer timeouts to ensure state updates are processed properly
     setTimeout(() => {
-      // Set token distributions 
+      console.log('[AssetSelection] Setting token distributions:', newTokenDistributions.length);
       setTokenDistributions(newTokenDistributions);
       
-      // Then set NFT distributions
+      console.log('[AssetSelection] Setting NFT distributions:', 
+        nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length);
       setNFTDistributions([...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]);
       
-      // Force navigation to happen after state updates are processed
+      // Use a longer timeout to ensure state updates have propagated
       setTimeout(() => {
         console.log('[AssetSelection] Navigating to next step with updated distributions:', {
           tokens: newTokenDistributions.length,
           nfts: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
         });
         nextStep();
-      }, 50);
-    }, 50);
+      }, 200);
+    }, 100);
   };
 
   const hasSelections = selectedTokens.length > 0 || selectedNFTs.length > 0 || selectedCollections.length > 0;

@@ -65,12 +65,10 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
-  // Load wallet assets when wallet connection changes
   useEffect(() => {
     if (wallet.connected) {
       setLoading(true);
       
-      // Load real tokens and collections from wallet
       Promise.all([
         CollectionService.getWalletTokens(),
         CollectionService.getWalletCollections()
@@ -92,7 +90,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
           setLoading(false);
         });
     } else {
-      // Reset state when wallet disconnects
       setTokens([]);
       setCollections([]);
       setTokenDistributions([]);
@@ -101,7 +98,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     }
   }, [wallet.connected]);
 
-  // Log tokenDistributions changes
   useEffect(() => {
     console.log('[AirdropContext] tokenDistributions updated:', tokenDistributions.length);
   }, [tokenDistributions]);
@@ -109,32 +105,23 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   const selectToken = (tokenId: string) => {
     console.log(`[AirdropContext] Selecting token: ${tokenId}`);
     
-    // Find the token in our tokens list
     const token = tokens.find(t => t.id === tokenId);
     if (!token) {
       console.error(`[AirdropContext] Cannot select token ${tokenId}: Not found in wallet tokens`);
       return;
     }
     
-    // Check if this token is already in distributions
     if (tokenDistributions.some(dist => dist.token.id === tokenId)) {
       console.log(`[AirdropContext] Token ${tokenId} already in distributions`);
       return;
     }
     
-    // Calculate a reasonable default amount based on decimals
-    // For regular tokens with decimals, default to 1 token
-    // For native ERG or tokens without decimals, use a different default
     const initialAmount = token.decimals > 0 
-      ? 1 // A single token (e.g., 1 SigUSD)
+      ? 1
       : token.name.toLowerCase() === 'erg' 
-        ? 0.1 // Default to 0.1 ERG if it's the native token
-        : 1; // Default for tokens without decimals
-        
-    // Convert to raw amount if needed based on decimals
-    // Don't convert here, we'll handle display formatting elsewhere
+        ? 0.1
+        : 1;
     
-    // Add to distributions
     setTokenDistributions(prev => [
       ...prev, 
       { 
@@ -184,20 +171,17 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   const selectCollection = (collectionId: string) => {
     console.log(`[AirdropContext] Selecting collection: ${collectionId}`);
     
-    // Find the collection in our collections list
     const collection = collections.find(c => c.id === collectionId);
     if (!collection) {
       console.error(`[AirdropContext] Cannot select collection ${collectionId}: Not found`);
       return;
     }
     
-    // Check if this collection is already in distributions
     if (nftDistributions.some(dist => dist.collection?.id === collectionId)) {
       console.log(`[AirdropContext] Collection ${collectionId} already in distributions`);
       return;
     }
     
-    // Add to distributions
     setNFTDistributions(prev => [
       ...prev, 
       { 
@@ -222,7 +206,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   const selectNFT = (nftId: string) => {
     console.log(`[AirdropContext] Selecting NFT: ${nftId}`);
     
-    // Find the NFT in our collections
     let nft: NFT | undefined;
     for (const collection of collections) {
       nft = collection.nfts.find(n => n.id === nftId);
@@ -234,13 +217,11 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
       return;
     }
     
-    // Check if this NFT is already in distributions
     if (nftDistributions.some(dist => dist.nft?.id === nftId)) {
       console.log(`[AirdropContext] NFT ${nftId} already in distributions`);
       return;
     }
     
-    // Add to distributions
     setNFTDistributions(prev => [
       ...prev, 
       { 
@@ -263,10 +244,18 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   };
 
   const setNFTDistributionType = (entityId: string, type: NFTDistributionType) => {
+    console.log(`[AirdropContext] Setting NFT distribution type to ${type} for entity: ${entityId}`);
+    
     setNFTDistributions(prev => 
       prev.map(nd => {
         if ((nd.collection && nd.collection.id === entityId) || 
             (nd.nft && nd.nft.id === entityId)) {
+          console.log(`[AirdropContext] Found matching distribution to update`, {
+            isCollection: !!nd.collection,
+            isNft: !!nd.nft,
+            currentType: nd.type,
+            newType: type
+          });
           return { ...nd, type };
         }
         return nd;
@@ -297,7 +286,7 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     
     try {
       const finalUrl = url.includes('5.78.102.130') 
-        ? `/api/sigmanauts-proxy` // This would be your proxy endpoint
+        ? `/api/sigmanauts-proxy`
         : url;
 
       const response = await fetch(finalUrl, {
@@ -363,16 +352,11 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
       nftDistributions: nftDistributions.length
     });
     
-    // Skip validation for the first step (asset selection) - user should be able to proceed
-    // even with empty selections, as we'll populate them on demand in the handleContinue function
-    
-    // Only validate when moving from step 2 (distributions) to step 3 (recipients)
     if (currentStep === 2 && tokenDistributions.length === 0 && nftDistributions.length === 0) {
       toast.error('Please select at least one token or NFT to airdrop');
       return;
     }
     
-    // Validate recipients when moving to the final step
     if (currentStep === 3 && recipients.length === 0) {
       toast.error('Please add at least one recipient');
       return;
@@ -403,8 +387,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     
     try {
-      // In a real implementation, we would use the AirdropService here
-      // For now, simulate with a delay
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       const txId = '9f5ZKbECR3HHtUbCR5UGQwkYGGt6K5VHAiGQw89RqDHHZ7jnSW1';
@@ -420,7 +402,6 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Include this effect to log whenever tokenDistributions change
   useEffect(() => {
     console.log('[AirdropContext] Token distributions updated:', {
       length: tokenDistributions.length,
