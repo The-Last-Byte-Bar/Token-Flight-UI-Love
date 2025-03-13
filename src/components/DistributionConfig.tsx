@@ -6,69 +6,36 @@ import TokenDistributionForm from './TokenDistributionForm';
 import NFTDistributionForm from './NFTDistributionForm';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
-import { TokenDistribution } from '@/types';
+import { toast } from 'sonner';
 
 export default function DistributionConfig() {
   const { 
     tokenDistributions, 
     nftDistributions,
-    setTokenDistributionType,
-    setTokenAmount,
     nextStep,
     prevStep
   } = useAirdrop();
 
   const [activeTab, setActiveTab] = useState('tokens');
-  const [isInitialized, setIsInitialized] = useState(false);
   
-  // Check if we have distributions on mount and log them
+  // Log distributions on mount and when they change
   useEffect(() => {
-    console.log('[DistributionConfig] Mounted with distributions:', {
+    console.log('[DistributionConfig] Current distributions:', {
       tokenDistributions: tokenDistributions.length,
       nftDistributions: nftDistributions.length
     });
     
-    // Mark as initialized after a longer delay to ensure context is fully loaded
-    setTimeout(() => {
-      setIsInitialized(true);
-      console.log('[DistributionConfig] Initialization complete, distributions:', {
-        tokenDistributions: tokenDistributions.length,
-        nftDistributions: nftDistributions.length
-      });
-    }, 250);
-  }, []);
-  
-  // Log when distributions change
-  useEffect(() => {
-    if (isInitialized) {
-      console.log('[DistributionConfig] Distributions updated:', {
-        tokenDistributions: tokenDistributions.length,
-        nftDistributions: nftDistributions.length
-      });
-    }
-  }, [tokenDistributions, nftDistributions, isInitialized]);
-
-  // Set active tab based on which distributions we have
-  useEffect(() => {
-    if (tokenDistributions.length > 0 && activeTab !== 'tokens') {
+    // Set initial active tab based on available distributions
+    if (tokenDistributions.length > 0) {
       setActiveTab('tokens');
-    } else if (tokenDistributions.length === 0 && nftDistributions.length > 0 && activeTab !== 'nfts') {
+    } else if (nftDistributions.length > 0) {
       setActiveTab('nfts');
     }
-  }, [tokenDistributions.length, nftDistributions.length]);
-
-  const updateTokenDistribution = (tokenId: string, updates: Partial<TokenDistribution>) => {
-    if (updates.type) {
-      setTokenDistributionType(tokenId, updates.type);
-    }
-    if (updates.amount !== undefined) {
-      setTokenAmount(tokenId, updates.amount);
-    }
-  };
+  }, [tokenDistributions, nftDistributions]);
 
   const handleSubmit = () => {
     if (tokenDistributions.length === 0 && nftDistributions.length === 0) {
-      alert("Please go back and select at least one token or NFT to distribute");
+      toast.error("Please go back and select at least one token or NFT to distribute");
       return;
     }
     
@@ -81,16 +48,6 @@ export default function DistributionConfig() {
 
   const hasAnyDistributions = tokenDistributions.length > 0 || nftDistributions.length > 0;
 
-  // Added debugging for loading state
-  const loadingView = !isInitialized || (!hasAnyDistributions && tokenDistributions.length === 0 && nftDistributions.length === 0);
-  console.log('[DistributionConfig] Render state:', { 
-    isInitialized, 
-    hasAnyDistributions,
-    loadingView,
-    tokenDistLen: tokenDistributions.length,
-    nftDistLen: nftDistributions.length
-  });
-
   return (
     <div className="space-y-6">
       <PixelatedContainer>
@@ -102,11 +59,7 @@ export default function DistributionConfig() {
             Set how your tokens and NFTs will be distributed to recipients.
           </p>
 
-          {!isInitialized ? (
-            <div className="text-center py-8">
-              <p className="text-gray-400">Loading distributions...</p>
-            </div>
-          ) : !hasAnyDistributions ? (
+          {!hasAnyDistributions ? (
             <PixelatedContainer className="p-4 text-center text-gray-400">
               <p className="text-lg mb-2">No assets selected for distribution</p>
               <p className="mb-4">Please go back and select tokens or NFTs from your wallet.</p>
@@ -131,9 +84,6 @@ export default function DistributionConfig() {
                     <TokenDistributionForm
                       key={distribution.token.id}
                       distribution={distribution}
-                      onUpdate={(updatedDistribution) => 
-                        updateTokenDistribution(distribution.token.id, updatedDistribution)
-                      }
                     />
                   ))
                 ) : (

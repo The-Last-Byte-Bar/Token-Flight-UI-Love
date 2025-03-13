@@ -1,13 +1,15 @@
+
 import { useState, useEffect } from 'react';
 import { TokenDistribution, TokenDistributionType } from '@/types';
 import PixelatedButton from './PixelatedButton';
+import { useAirdrop } from '@/context/AirdropContext';
 
 interface TokenDistributionFormProps {
   distribution: TokenDistribution;
-  onUpdate: (updatedDistribution: Partial<TokenDistribution>) => void;
 }
 
-export default function TokenDistributionForm({ distribution, onUpdate }: TokenDistributionFormProps) {
+export default function TokenDistributionForm({ distribution }: TokenDistributionFormProps) {
+  const { setTokenDistributionType, setTokenAmount } = useAirdrop();
   const [amount, setAmount] = useState(distribution.amount);
 
   // Update local state when the distribution changes
@@ -19,12 +21,12 @@ export default function TokenDistributionForm({ distribution, onUpdate }: TokenD
     const value = parseFloat(e.target.value);
     if (!isNaN(value)) {
       setAmount(value);
-      onUpdate({ amount: value });
+      setTokenAmount(distribution.token.id, value);
     }
   };
 
-  const setDistributionType = (type: TokenDistributionType) => {
-    onUpdate({ type });
+  const updateDistributionType = (type: TokenDistributionType) => {
+    setTokenDistributionType(distribution.token.id, type);
   };
 
   // Format token amount properly considering decimals
@@ -62,13 +64,13 @@ export default function TokenDistributionForm({ distribution, onUpdate }: TokenD
           <label className="block text-sm font-bold mb-2">Distribution Method</label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <PixelatedButton
-              onClick={() => setDistributionType('total')}
+              onClick={() => updateDistributionType('total')}
               className={distribution.type === 'total' ? 'bg-deepsea-bright' : 'bg-gray-700'}
             >
               Total Distribution
             </PixelatedButton>
             <PixelatedButton
-              onClick={() => setDistributionType('per-user')}
+              onClick={() => updateDistributionType('per-user')}
               className={distribution.type === 'per-user' ? 'bg-deepsea-bright' : 'bg-gray-700'}
             >
               Per User Distribution
@@ -96,4 +98,4 @@ export default function TokenDistributionForm({ distribution, onUpdate }: TokenD
       </div>
     </div>
   );
-} 
+}

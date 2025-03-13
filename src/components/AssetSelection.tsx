@@ -5,6 +5,7 @@ import { useWalletAssets } from '@/hooks/useWalletAssets';
 import { WalletAssets } from './WalletAssets';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
+import { toast } from 'sonner';
 
 export default function AssetSelection() {
   const { 
@@ -42,6 +43,7 @@ export default function AssetSelection() {
     // Only proceed if we have selections
     if (selectedTokens.length === 0 && selectedNFTs.length === 0 && selectedCollections.length === 0) {
       console.warn('[AssetSelection] No assets selected');
+      toast.error('Please select at least one asset to distribute');
       return;
     }
     
@@ -82,28 +84,20 @@ export default function AssetSelection() {
       nfts: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
     });
     
-    // Clear existing distributions first
-    setTokenDistributions([]);
-    setNFTDistributions([]);
+    // First set the token distributions
+    setTokenDistributions(newTokenDistributions);
     
-    // Important: Use longer timeouts to ensure state updates are processed properly
-    setTimeout(() => {
-      console.log('[AssetSelection] Setting token distributions:', newTokenDistributions.length);
-      setTokenDistributions(newTokenDistributions);
-      
-      console.log('[AssetSelection] Setting NFT distributions:', 
-        nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length);
-      setNFTDistributions([...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]);
-      
-      // Use a longer timeout to ensure state updates have propagated
-      setTimeout(() => {
-        console.log('[AssetSelection] Navigating to next step with updated distributions:', {
-          tokens: newTokenDistributions.length,
-          nfts: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
-        });
-        nextStep();
-      }, 200);
-    }, 100);
+    // Then set the NFT distributions
+    setNFTDistributions([...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]);
+    
+    // Log the distributions we've set
+    console.log('[AssetSelection] Distributions have been set:', {
+      tokenDist: newTokenDistributions.length,
+      nftDist: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
+    });
+    
+    // Navigate to the next step
+    nextStep();
   };
 
   const hasSelections = selectedTokens.length > 0 || selectedNFTs.length > 0 || selectedCollections.length > 0;
