@@ -4,7 +4,7 @@ import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedContainer from './PixelatedContainer';
 import TokenDistributionForm from './TokenDistributionForm';
 import NFTDistributionForm from './NFTDistributionForm';
-import { createDebugLogger } from '@/hooks/useDebugLog';
+import { createDebugLogger, flushLogs } from '@/hooks/useDebugLog';
 
 const debug = createDebugLogger('DistributionConfig');
 
@@ -14,23 +14,35 @@ export default function DistributionConfig() {
     nftDistributions 
   } = useAirdrop();
 
+  // Immediately flush a debug log to show we're rendering
+  useEffect(() => {
+    debug('DistributionConfig mounted with:', {
+      tokenDistributions: tokenDistributions?.length || 0,
+      nftDistributions: nftDistributions?.length || 0
+    });
+    
+    flushLogs();
+  }, []);
+
   // Debug log when distributions change
   useEffect(() => {
     debug('Distributions loaded:', {
-      tokenDistributionsCount: tokenDistributions.length,
-      tokenDistributions: tokenDistributions.map(d => ({
+      tokenDistributionsCount: tokenDistributions?.length || 0,
+      tokenDistributions: tokenDistributions?.map(d => ({
         name: d.token.name,
         id: d.token.id,
         type: d.type,
         amount: d.amount
-      })),
-      nftDistributionsCount: nftDistributions.length,
-      nftDistributions: nftDistributions.map(d => ({
+      })) || [],
+      nftDistributionsCount: nftDistributions?.length || 0,
+      nftDistributions: nftDistributions?.map(d => ({
         name: d.collection?.name || d.nft?.name || 'Unknown',
         id: d.collection?.id || d.nft?.id || 'Unknown ID',
         type: d.type
-      }))
+      })) || []
     });
+    
+    flushLogs();
   }, [tokenDistributions, nftDistributions]);
 
   const hasTokens = tokenDistributions && tokenDistributions.length > 0;

@@ -13,6 +13,9 @@ import {
 import { useWallet } from './WalletContext';
 import { toast } from 'sonner';
 import { CollectionService } from '@/services/CollectionService';
+import { createDebugLogger, flushLogs } from '@/hooks/useDebugLog';
+
+const debug = createDebugLogger('AirdropContext');
 
 interface AirdropContextType {
   tokens: Token[];
@@ -23,14 +26,12 @@ interface AirdropContextType {
   loading: boolean;
   currentStep: number;
   
-  // Token functions
   selectToken: (tokenId: string) => void;
   unselectToken: (tokenId: string) => void;
   setTokenDistributions: React.Dispatch<React.SetStateAction<TokenDistribution[]>>;
   setTokenDistributionType: (tokenId: string, type: TokenDistributionType) => void;
   setTokenAmount: (tokenId: string, amount: number) => void;
   
-  // NFT functions
   selectCollection: (collectionId: string) => void;
   unselectCollection: (collectionId: string) => void;
   selectNFT: (nftId: string) => void;
@@ -38,17 +39,14 @@ interface AirdropContextType {
   setNFTDistributions: React.Dispatch<React.SetStateAction<NFTDistribution[]>>;
   setNFTDistributionType: (entityId: string, type: NFTDistributionType) => void;
   
-  // Recipient functions
   addRecipient: (address: string, name?: string) => void;
   removeRecipient: (id: string) => void;
   importRecipients: (recipients: Recipient[]) => void;
   importRecipientsFromApi: (url: string, addressField: string) => Promise<boolean>;
   
-  // Navigation functions
   nextStep: () => void;
   prevStep: () => void;
   
-  // Airdrop functions
   getAirdropSummary: () => AirdropConfig;
   executeAirdrop: () => Promise<string | null>;
 }
@@ -99,8 +97,15 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   }, [wallet.connected]);
 
   useEffect(() => {
-    console.log('[AirdropContext] tokenDistributions updated:', tokenDistributions.length);
+    debug('tokenDistributions updated:', tokenDistributions.length);
+    debug('Detailed token distributions:', tokenDistributions.map(d => `${d.token.name} (${d.amount})`));
+    flushLogs();
   }, [tokenDistributions]);
+
+  useEffect(() => {
+    debug('nftDistributions updated:', nftDistributions.length);
+    flushLogs();
+  }, [nftDistributions]);
 
   const selectToken = (tokenId: string) => {
     console.log(`[AirdropContext] Selecting token: ${tokenId}`);
@@ -346,7 +351,7 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   };
 
   const nextStep = () => {
-    console.log('[AirdropContext] Moving to next step', {
+    debug('Moving to next step', {
       currentStep,
       tokenDistributions: tokenDistributions.length,
       nftDistributions: nftDistributions.length
@@ -363,7 +368,7 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
     }
     
     if (currentStep < 4) {
-      console.log(`[AirdropContext] Advancing from step ${currentStep} to ${currentStep + 1}`);
+      debug(`Advancing from step ${currentStep} to ${currentStep + 1}`);
       setCurrentStep(prev => prev + 1);
     }
   };
@@ -403,10 +408,11 @@ export function AirdropProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    console.log('[AirdropContext] Token distributions updated:', {
+    debug('Token distributions updated:', {
       length: tokenDistributions.length,
       distributions: tokenDistributions.map(d => `${d.token.name} (${d.amount})`)
     });
+    flushLogs();
   }, [tokenDistributions]);
 
   return (

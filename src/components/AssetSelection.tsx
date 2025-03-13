@@ -43,95 +43,101 @@ export default function AssetSelection() {
     });
   }, [selectedTokens, selectedNFTs, selectedCollections, tokens, collections, tokenDistributions, nftDistributions]);
 
-  const handleContinue = () => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    
-    debug('Continue clicked - preparing distributions', {
+  // Function to prepare distributions from selections
+  const prepareDistributions = () => {
+    debug('Preparing distributions from selections', {
       selectedTokens: selectedTokens.length,
       selectedNFTs: selectedNFTs.length,
       selectedCollections: selectedCollections.length
     });
     
-    // Only proceed if we have selections
-    if (selectedTokens.length === 0 && selectedNFTs.length === 0 && selectedCollections.length === 0) {
-      debug('No assets selected');
-      toast.error('Please select at least one asset to distribute');
-      setIsSubmitting(false);
-      return;
-    }
-    
-    try {
-      // Convert selected tokens directly to token distributions
-      const newTokenDistributions: TokenDistribution[] = selectedTokens.map(token => {
-        // Calculate a reasonable default amount based on decimals
-        const initialAmount = token.decimals > 0 
-          ? 1 // A single token (e.g., 1 SigUSD)
-          : token.name.toLowerCase() === 'erg' 
-            ? 0.1 // Default to 0.1 ERG if it's the native token
-            : 1; // Default for tokens without decimals
-            
-        debug(`Creating token distribution for ${token.name} with amount ${initialAmount}`);
-        
-        return {
-          token,
-          type: 'total',
-          amount: initialAmount
-        };
-      });
+    // Convert selected tokens directly to token distributions
+    const newTokenDistributions: TokenDistribution[] = selectedTokens.map(token => {
+      // Calculate a reasonable default amount based on decimals
+      const initialAmount = token.decimals > 0 
+        ? 1 // A single token (e.g., 1 SigUSD)
+        : token.name.toLowerCase() === 'erg' 
+          ? 0.1 // Default to 0.1 ERG if it's the native token
+          : 1; // Default for tokens without decimals
+          
+      debug(`Creating token distribution for ${token.name} with amount ${initialAmount}`);
       
-      // Convert selected NFTs and collections directly to NFT distributions
-      const nftDistributionsFromCollections: NFTDistribution[] = selectedCollections.map(collection => ({
-        collection,
+      return {
+        token,
+        type: 'total',
+        amount: initialAmount
+      };
+    });
+    
+    // Convert selected NFTs and collections directly to NFT distributions
+    const nftDistributionsFromCollections: NFTDistribution[] = selectedCollections.map(collection => ({
+      collection,
+      type: '1-to-1'
+    }));
+    
+    const nftDistributionsFromNFTs: NFTDistribution[] = selectedNFTs
+      // Filter out NFTs that are already part of a selected collection
+      .filter(nft => !selectedCollections.some(c => 
+        c.nfts.some(n => n.id === nft.id)
+      ))
+      .map(nft => ({
+        nft,
         type: '1-to-1'
       }));
+    
+    return {
+      tokenDistributions: newTokenDistributions,
+      nftDistributions: [...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]
+    };
+  };
+
+  // Update distributions in context and navigate
+  const updateDistributionsAndNavigate = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    
+    try {
+      const { tokenDistributions: newTokenDist, nftDistributions: newNftDist } = prepareDistributions();
       
-      const nftDistributionsFromNFTs: NFTDistribution[] = selectedNFTs
-        // Filter out NFTs that are already part of a selected collection
-        .filter(nft => !selectedCollections.some(c => 
-          c.nfts.some(n => n.id === nft.id)
-        ))
-        .map(nft => ({
-          nft,
-          type: '1-to-1'
-        }));
-      
-      debug('Created distributions', {
-        tokens: newTokenDistributions.map(d => d.token.name),
-        collections: nftDistributionsFromCollections.map(d => d.collection?.name),
-        nfts: nftDistributionsFromNFTs.map(d => d.nft?.name)
+      debug('Created distributions to save', {
+        tokenCount: newTokenDist.length,
+        nftCount: newNftDist.length,
+        tokens: newTokenDist.map(d => d.token.name),
+        nfts: newNftDist.map(d => d.collection?.name || d.nft?.name || 'Unknown')
       });
       
-      // Set token and NFT distributions and wait for state to be updated before navigating
-      const allNftDistributions = [...nftDistributionsFromCollections, ...nftDistributionsFromNFTs];
-      
-      // CRITICAL FIX: Set distributions IMMEDIATELY and SYNCHRONOUSLY
-      if (newTokenDistributions.length > 0) {
-        // Directly update token distributions
-        setTokenDistributions(newTokenDistributions);
-        debug('Token distributions set synchronously', { count: newTokenDistributions.length });
+      // Only proceed if we have selections
+      if (newTokenDist.length === 0 && newNftDist.length === 0) {
+        debug('No assets selected');
+        toast.error('Please select at least one asset to distribute');
+        setIsSubmitting(false);
+        return;
       }
       
-      if (allNftDistributions.length > 0) {
-        // Directly update NFT distributions
-        setNFTDistributions(allNftDistributions);
-        debug('NFT distributions set synchronously', { count: allNftDistributions.length });
-      }
+      // Update token distributions with direct state update
+      setTokenDistributions(newTokenDist);
+      debug('Token distributions set directly', { count: newTokenDist.length });
       
-      // Add a delay to ensure state updates are processed before navigation
+      // Update NFT distributions with direct state update
+      setNFTDistributions(newNftDist);
+      debug('NFT distributions set directly', { count: newNftDist.length });
+      
+      // Wait for React state updates to be processed
       setTimeout(() => {
-        debug('Navigating to next step after setting distributions', {
-          tokenDistributionsCount: newTokenDistributions.length,
-          nftDistributionsCount: allNftDistributions.length
-        });
+        debug('Navigating to next step after distributions set');
         nextStep();
         setIsSubmitting(false);
-      }, 500); // Increased timeout for state updates
+      }, 800); // Increased timeout to ensure state updates are processed
     } catch (error) {
       console.error('Error setting distributions:', error);
       toast.error('Something went wrong preparing your distributions. Please try again.');
       setIsSubmitting(false);
     }
+  };
+
+  const handleContinue = () => {
+    debug('Continue button clicked');
+    updateDistributionsAndNavigate();
   };
 
   const hasSelections = selectedTokens.length > 0 || selectedNFTs.length > 0 || selectedCollections.length > 0;
