@@ -7,11 +7,16 @@ import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
 import { toast } from 'sonner';
 import { NFTDistribution, TokenDistribution } from '@/types';
+import { createDebugLogger } from '@/hooks/useDebugLog';
+
+const debug = createDebugLogger('AssetSelection');
 
 export default function AssetSelection() {
   const { 
     setTokenDistributions,
     setNFTDistributions,
+    tokenDistributions,
+    nftDistributions,
     nextStep
   } = useAirdrop();
 
@@ -26,21 +31,23 @@ export default function AssetSelection() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Debug log when component renders
+  // Debug log when component renders or selections change
   useEffect(() => {
-    console.log('[AssetSelection] Component rendered with selections:', { 
+    debug('Component rendered with selections:', { 
       selectedTokensLength: selectedTokens.length,
       tokensLength: tokens.length,
       selectedNFTsLength: selectedNFTs.length,
-      selectedCollectionsLength: selectedCollections.length
+      selectedCollectionsLength: selectedCollections.length,
+      currentTokenDistributions: tokenDistributions.length,
+      currentNFTDistributions: nftDistributions.length
     });
-  }, [selectedTokens, selectedNFTs, selectedCollections, tokens, collections]);
+  }, [selectedTokens, selectedNFTs, selectedCollections, tokens, collections, tokenDistributions, nftDistributions]);
 
-  const handleContinue = async () => {
+  const handleContinue = () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     
-    console.log('[AssetSelection] Continue clicked - preparing distributions', {
+    debug('Continue clicked - preparing distributions', {
       selectedTokens: selectedTokens.length,
       selectedNFTs: selectedNFTs.length,
       selectedCollections: selectedCollections.length
@@ -48,7 +55,7 @@ export default function AssetSelection() {
     
     // Only proceed if we have selections
     if (selectedTokens.length === 0 && selectedNFTs.length === 0 && selectedCollections.length === 0) {
-      console.warn('[AssetSelection] No assets selected');
+      debug('No assets selected');
       toast.error('Please select at least one asset to distribute');
       setIsSubmitting(false);
       return;
@@ -64,7 +71,7 @@ export default function AssetSelection() {
             ? 0.1 // Default to 0.1 ERG if it's the native token
             : 1; // Default for tokens without decimals
             
-        console.log(`[AssetSelection] Creating token distribution for ${token.name} with amount ${initialAmount}`);
+        debug(`Creating token distribution for ${token.name} with amount ${initialAmount}`);
         
         return {
           token,
@@ -89,28 +96,36 @@ export default function AssetSelection() {
           type: '1-to-1'
         }));
       
-      console.log('[AssetSelection] Created distributions', {
+      debug('Created distributions', {
         tokens: newTokenDistributions.map(d => d.token.name),
         collections: nftDistributionsFromCollections.map(d => d.collection?.name),
         nfts: nftDistributionsFromNFTs.map(d => d.nft?.name)
       });
       
-      // Directly set the distributions without any async operations
+      // First set token distributions
       if (newTokenDistributions.length > 0) {
         setTokenDistributions(newTokenDistributions);
+        debug('Token distributions set', { count: newTokenDistributions.length });
       }
       
+      // Then set NFT distributions
       if (nftDistributionsFromCollections.length > 0 || nftDistributionsFromNFTs.length > 0) {
-        setNFTDistributions([...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]);
+        const allNftDistributions = [...nftDistributionsFromCollections, ...nftDistributionsFromNFTs];
+        setNFTDistributions(allNftDistributions);
+        debug('NFT distributions set', { count: allNftDistributions.length });
       }
       
-      // Small delay to ensure state is updated before navigation
+      // Ensure distributions are set before navigating
       setTimeout(() => {
+        debug('Navigating to next step', {
+          tokenDistributionsCount: newTokenDistributions.length,
+          nftDistributionsCount: nftDistributionsFromCollections.length + nftDistributionsFromNFTs.length
+        });
         nextStep();
         setIsSubmitting(false);
-      }, 100);
+      }, 300);
     } catch (error) {
-      console.error('[AssetSelection] Error setting distributions:', error);
+      console.error('Error setting distributions:', error);
       toast.error('Something went wrong preparing your distributions. Please try again.');
       setIsSubmitting(false);
     }

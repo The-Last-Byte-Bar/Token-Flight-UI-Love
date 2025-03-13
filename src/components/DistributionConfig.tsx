@@ -4,6 +4,9 @@ import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedContainer from './PixelatedContainer';
 import TokenDistributionForm from './TokenDistributionForm';
 import NFTDistributionForm from './NFTDistributionForm';
+import { createDebugLogger } from '@/hooks/useDebugLog';
+
+const debug = createDebugLogger('DistributionConfig');
 
 export default function DistributionConfig() {
   const { 
@@ -13,7 +16,7 @@ export default function DistributionConfig() {
 
   // Debug log when distributions change
   useEffect(() => {
-    console.log('==== [DistributionConfig] Distributions loaded: ====', {
+    debug('Distributions loaded:', {
       tokenDistributions: tokenDistributions.map(d => ({
         name: d.token.name,
         id: d.token.id,
