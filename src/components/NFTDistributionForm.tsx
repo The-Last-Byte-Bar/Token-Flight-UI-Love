@@ -2,6 +2,7 @@
 import { NFTDistribution, NFTDistributionType } from '@/types';
 import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedButton from './PixelatedButton';
+import { useEffect } from 'react';
 
 interface NFTDistributionFormProps {
   distribution: NFTDistribution;
@@ -15,12 +16,24 @@ export default function NFTDistributionForm({ distribution }: NFTDistributionFor
     : distribution.nft?.name || 'Unknown NFT';
   
   const count = distribution.collection 
-    ? distribution.collection.nfts.filter(n => n.selected).length 
+    ? distribution.collection.nfts.filter(n => n.selected).length || distribution.collection.nfts.length
     : 1;
   
   const entityId = distribution.collection 
     ? distribution.collection.id
     : distribution.nft?.id || '';
+  
+  // Debug log when component mounts  
+  useEffect(() => {
+    console.log('[NFTDistributionForm] Rendering NFT distribution:', {
+      name,
+      entityId,
+      count,
+      type: distribution.type,
+      hasCollection: !!distribution.collection,
+      hasNFT: !!distribution.nft
+    });
+  }, [name, entityId, count, distribution.type, distribution.collection, distribution.nft]);
     
   const updateDistributionType = (type: NFTDistributionType) => {
     console.log(`[NFTDistributionForm] Updating distribution type to ${type} for entity: ${entityId}`);

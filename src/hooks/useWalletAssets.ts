@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Collection, NFT, Token } from '@/types';
 import { useWallet } from '@/context/WalletContext';
@@ -61,6 +62,11 @@ export function useWalletAssets() {
         collections,
         loading: false
       }));
+      
+      console.log('[useWalletAssets] Assets loaded:', {
+        tokens: tokens.length,
+        collections: collections.length
+      });
     } catch (error) {
       console.error('Error loading wallet assets:', error);
       setState(prev => ({
@@ -82,11 +88,19 @@ export function useWalletAssets() {
       
       const isSelected = prev.selectedTokens.some(t => t.id === tokenId);
       
+      const updatedSelectedTokens = isSelected
+        ? prev.selectedTokens.filter(t => t.id !== tokenId)
+        : [...prev.selectedTokens, token];
+      
+      console.log('[useWalletAssets] Token selection toggled:', {
+        tokenId,
+        isSelected,
+        newSelectionCount: updatedSelectedTokens.length
+      });
+      
       return {
         ...prev,
-        selectedTokens: isSelected
-          ? prev.selectedTokens.filter(t => t.id !== tokenId)
-          : [...prev.selectedTokens, token]
+        selectedTokens: updatedSelectedTokens
       };
     });
   };
@@ -109,6 +123,12 @@ export function useWalletAssets() {
       const updatedSelectedCollections = isSelected
         ? prev.selectedCollections.filter(c => c.id !== collectionId)
         : [...prev.selectedCollections, { ...collection, selected: true }];
+      
+      console.log('[useWalletAssets] Collection selection toggled:', {
+        collectionId,
+        isSelected,
+        newSelectionCount: updatedSelectedCollections.length
+      });
       
       return {
         ...prev,
@@ -156,6 +176,13 @@ export function useWalletAssets() {
         ? prev.selectedNFTs.filter(n => n.id !== nftId)
         : [...prev.selectedNFTs, { ...targetNFT, selected: true }];
       
+      console.log('[useWalletAssets] NFT selection toggled:', {
+        nftId,
+        collectionId: targetCollection.id,
+        isSelected,
+        newSelectionCount: updatedSelectedNFTs.length
+      });
+      
       return {
         ...prev,
         collections: updatedCollections,
@@ -165,10 +192,12 @@ export function useWalletAssets() {
   };
 
   // Force refresh of wallet assets
-  const refreshAssets = () => {
+  const refreshAssets = async () => {
     if (wallet.connected) {
-      loadAssets();
+      await loadAssets();
+      return true;
     }
+    return false;
   };
 
   return {
@@ -178,4 +207,4 @@ export function useWalletAssets() {
     toggleCollectionSelection,
     toggleNFTSelection
   };
-} 
+}

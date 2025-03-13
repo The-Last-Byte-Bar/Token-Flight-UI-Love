@@ -16,11 +16,11 @@ export default function DistributionConfig() {
     prevStep
   } = useAirdrop();
 
-  const [activeTab, setActiveTab] = useState('tokens');
+  const [activeTab, setActiveTab] = useState(tokenDistributions.length > 0 ? 'tokens' : 'nfts');
   
-  // Log distributions on mount and when they change
+  // Log distributions when component mounts and when they change
   useEffect(() => {
-    console.log('[DistributionConfig] Current distributions:', {
+    console.log('[DistributionConfig] Distributions update detected:', {
       tokenDistributions: tokenDistributions.length,
       nftDistributions: nftDistributions.length
     });
@@ -80,9 +80,9 @@ export default function DistributionConfig() {
               
               <TabsContent value="tokens" className="space-y-4">
                 {tokenDistributions.length > 0 ? (
-                  tokenDistributions.map((distribution) => (
+                  tokenDistributions.map((distribution, index) => (
                     <TokenDistributionForm
-                      key={distribution.token.id}
+                      key={`token-${distribution.token.id}-${index}`}
                       distribution={distribution}
                     />
                   ))
@@ -96,9 +96,9 @@ export default function DistributionConfig() {
               
               <TabsContent value="nfts" className="space-y-4">
                 {nftDistributions.length > 0 ? (
-                  nftDistributions.map((distribution) => (
+                  nftDistributions.map((distribution, index) => (
                     <NFTDistributionForm
-                      key={distribution.collection ? distribution.collection.id : distribution.nft?.id}
+                      key={`nft-${distribution.collection ? distribution.collection.id : distribution.nft?.id}-${index}`}
                       distribution={distribution}
                     />
                   ))

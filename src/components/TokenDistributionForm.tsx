@@ -14,8 +14,9 @@ export default function TokenDistributionForm({ distribution }: TokenDistributio
 
   // Update local state when the distribution changes
   useEffect(() => {
+    console.log('[TokenDistributionForm] Distribution updated:', distribution.token.name, distribution.amount);
     setAmount(distribution.amount);
-  }, [distribution.amount]);
+  }, [distribution.amount, distribution.token.name]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value);
@@ -26,6 +27,7 @@ export default function TokenDistributionForm({ distribution }: TokenDistributio
   };
 
   const updateDistributionType = (type: TokenDistributionType) => {
+    console.log('[TokenDistributionForm] Updating type:', distribution.token.name, type);
     setTokenDistributionType(distribution.token.id, type);
   };
 
