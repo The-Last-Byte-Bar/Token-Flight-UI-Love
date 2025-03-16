@@ -1,4 +1,3 @@
-
 import { 
   Token, 
   NFT, 
@@ -9,7 +8,7 @@ import {
   TokenDistributionType,
   NFTDistributionType,
   AirdropConfig
-} from '@/types';
+} from '@/types/index';
 
 export interface AirdropContextType {
   tokens: Token[];
@@ -32,6 +31,7 @@ export interface AirdropContextType {
   unselectNFT: (nftId: string) => void;
   setNFTDistributions: React.Dispatch<React.SetStateAction<NFTDistribution[]>>;
   setNFTDistributionType: (entityId: string, type: NFTDistributionType) => void;
+  setNFTAmountForDistribution: (entityId: string, amount: number) => void;
   
   addRecipient: (address: string, name?: string) => void;
   removeRecipient: (id: string) => void;

@@ -43,7 +43,7 @@ function extractCollectionInfo(boxData: any): {
   
   // Initialize collection info
   const metadata: Record<string, any> = {};
-  let collectionInfo = {
+  const collectionInfo = {
     collectionId: null as string | null,
     collectionName: null as string | null,
     isPartOfCollection: false,

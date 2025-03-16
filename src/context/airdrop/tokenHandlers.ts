@@ -1,5 +1,4 @@
-
-import { Token, TokenDistribution, TokenDistributionType } from '@/types';
+import { Token, TokenDistribution, TokenDistributionType } from '@/types/index';
 import { createDebugLogger } from '@/hooks/useDebugLog';
 
 const debug = createDebugLogger('AirdropTokenHandlers');
@@ -12,13 +11,13 @@ export const handleSelectToken = (
 ) => {
   console.log(`[AirdropContext] Selecting token: ${tokenId}`);
   
-  const token = tokens.find(t => t.id === tokenId);
+  const token = tokens.find(t => t.tokenId === tokenId);
   if (!token) {
     console.error(`[AirdropContext] Cannot select token ${tokenId}: Not found in wallet tokens`);
     return;
   }
   
-  if (tokenDistributions.some(dist => dist.token.id === tokenId)) {
+  if (tokenDistributions.some(dist => dist.token.tokenId === tokenId)) {
     console.log(`[AirdropContext] Token ${tokenId} already in distributions`);
     return;
   }
@@ -56,7 +55,7 @@ export const handleUnselectToken = (
   console.log(`[AirdropContext] Unselecting token: ${tokenId}`);
   
   setTokenDistributions(prev => {
-    const filtered = prev.filter(distribution => distribution.token.id !== tokenId);
+    const filtered = prev.filter(distribution => distribution.token.tokenId !== tokenId);
     console.log(`[AirdropContext] Token ${tokenId} removed from distributions. ${filtered.length} remain.`);
     return filtered;
   });
@@ -71,7 +70,7 @@ export const handleSetTokenDistributionType = (
   
   setTokenDistributions(prev => {
     const updated = prev.map(distribution => 
-      distribution.token.id === tokenId 
+      distribution.token.tokenId === tokenId 
         ? { ...distribution, type } 
         : distribution
     );
@@ -90,7 +89,7 @@ export const handleSetTokenAmount = (
   
   setTokenDistributions(prev => {
     const updated = prev.map(distribution => 
-      distribution.token.id === tokenId 
+      distribution.token.tokenId === tokenId 
         ? { ...distribution, amount } 
         : distribution
     );

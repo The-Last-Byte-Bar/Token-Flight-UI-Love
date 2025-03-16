@@ -1,5 +1,5 @@
 export interface Token {
-  id: string;
+  tokenId: string;
   name: string;
   amount: number;
   decimals: number;
@@ -8,12 +8,13 @@ export interface Token {
 }
 
 export interface NFT {
-  id: string;
+  tokenId: string;
   name: string;
   description?: string;
   imageUrl: string;
   collectionId?: string;
   selected: boolean;
+  type?: 'picture' | 'audio' | 'video' | 'other';
 }
 
 export interface Collection {
@@ -30,9 +31,9 @@ export interface Recipient {
   name?: string;
 }
 
-export type TokenDistributionType = 'total' | 'per-user';
+export type TokenDistributionType = 'total' | 'per-user' | 'random';
 
-export type NFTDistributionType = '1-to-1' | 'set' | 'random';
+export type NFTDistributionType = 'random' | 'total' | 'per-user';
 
 export interface TokenDistribution {
   token: Token;
@@ -44,6 +45,7 @@ export interface NFTDistribution {
   collection?: Collection;
   nft?: NFT;
   type: NFTDistributionType;
+  amount?: number;
   mapping?: Record<string, string>; // For 1-to-1 mapping: NFT ID -> Recipient ID
 }
 

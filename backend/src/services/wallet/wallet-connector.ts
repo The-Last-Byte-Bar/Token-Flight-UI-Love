@@ -1,11 +1,43 @@
 import { WalletInfo } from '../../models/wallet.model';
 
+// Type definitions for Ergo wallet connectors
+interface ErgoConnector {
+  nautilus: {
+    connect: (options: { createErgoObject: boolean }) => Promise<boolean>;
+  };
+}
+
+interface ErgoApi {
+  get_used_addresses: () => Promise<string[]>;
+  get_change_address: () => Promise<string>;
+  get_utxos: () => Promise<any[]>;
+  sign_tx: (unsignedTx: any) => Promise<any>;
+  submit_tx: (signedTx: any) => Promise<string>;
+  get_current_height: () => Promise<number>;
+}
+
+// Use conditionals for all browser-specific operations
+const isServer = typeof window === 'undefined';
+
+// Safe access to browser objects
+const getErgoConnector = (): ErgoConnector | undefined => {
+  if (isServer) return undefined;
+  return (window as any).ergoConnector;
+};
+
+const getErgoApi = (): ErgoApi | undefined => {
+  if (isServer) return undefined;
+  return (window as any).ergo;
+};
+
 /**
  * Check if Nautilus wallet extension is installed
  * @returns True if Nautilus wallet is detected
  */
 export function detectNautilusWallet(): boolean {
-  return typeof window !== 'undefined' && 'ergoConnector' in window && 'nautilus' in window.ergoConnector;
+  if (isServer) return false;
+  const connector = getErgoConnector();
+  return !!connector && 'nautilus' in connector;
 }
 
 /**
@@ -18,8 +50,11 @@ export async function connectNautilusWallet(): Promise<WalletInfo> {
   }
 
   try {
+    const connector = getErgoConnector();
+    if (!connector) throw new Error('Ergo connector not available');
+
     // Connect to the wallet
-    const connected = await window.ergoConnector.nautilus.connect({
+    const connected = await connector.nautilus.connect({
       createErgoObject: true
     });
 
@@ -27,9 +62,12 @@ export async function connectNautilusWallet(): Promise<WalletInfo> {
       throw new Error('Failed to connect to Nautilus wallet');
     }
 
+    const ergo = getErgoApi();
+    if (!ergo) throw new Error('Ergo API not available');
+
     // Get wallet addresses
-    const addresses = await window.ergo.get_used_addresses();
-    const changeAddress = await window.ergo.get_change_address();
+    const addresses = await ergo.get_used_addresses();
+    const changeAddress = await ergo.get_change_address();
     
     // Determine the network type based on address prefix
     // Mainnet addresses typically start with '9' while testnet addresses start with '3'
@@ -57,8 +95,11 @@ export async function scanWalletForTokens() {
   }
 
   try {
+    const ergo = getErgoApi();
+    if (!ergo) throw new Error('Ergo API not available');
+    
     // Get all unspent boxes from the wallet
-    const boxes = await window.ergo.get_utxos();
+    const boxes = await ergo.get_utxos();
     const tokens = new Map();
 
     // Extract tokens from boxes
@@ -107,8 +148,11 @@ export async function signTransaction(unsignedTx: any) {
   }
 
   try {
+    const ergo = getErgoApi();
+    if (!ergo) throw new Error('Ergo API not available');
+    
     // Sign the transaction
-    return await window.ergo.sign_tx(unsignedTx);
+    return await ergo.sign_tx(unsignedTx);
   } catch (error) {
     console.error('Error signing transaction:', error);
     throw error;
@@ -126,8 +170,11 @@ export async function submitTransaction(signedTx: any) {
   }
 
   try {
+    const ergo = getErgoApi();
+    if (!ergo) throw new Error('Ergo API not available');
+    
     // Submit the transaction
-    return await window.ergo.submit_tx(signedTx);
+    return await ergo.submit_tx(signedTx);
   } catch (error) {
     console.error('Error submitting transaction:', error);
     throw error;
@@ -144,7 +191,10 @@ export async function getCurrentHeight() {
   }
 
   try {
-    return await window.ergo.get_current_height();
+    const ergo = getErgoApi();
+    if (!ergo) throw new Error('Ergo API not available');
+    
+    return await ergo.get_current_height();
   } catch (error) {
     console.error('Error getting current height:', error);
     throw error;

@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedButton from '../PixelatedButton';
@@ -39,12 +38,18 @@ const ApiImportForm = () => {
     setIsImportingApi(true);
     try {
       console.log('Attempting to import Sigmanauts miners...');
+      
+      // Use our direct proxy endpoint 
       const success = await importRecipientsFromApi(
-        'http://5.78.102.130:8000/sigscore/miners/bonus', 
+        '/api/sigmanauts-proxy', 
         'address'
       );
+      
       if (success) {
         toast.success('Sigmanauts miners imported successfully');
+      } else {
+        console.log('Sigmanauts miners import returned false (no recipients found)');
+        toast.warning('No Sigmanauts miners found. This could be because the API returned no data or is temporarily unavailable.');
       }
     } catch (error) {
       console.error('Sigmanauts import error:', error);

@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { TokenDistribution, TokenDistributionType } from '@/types';
 import PixelatedButton from './PixelatedButton';
@@ -33,20 +32,20 @@ export default function TokenDistributionForm({ distribution }: TokenDistributio
     if (!isNaN(value)) {
       setAmount(value);
       debug(`Updating amount for ${distribution?.token?.name || 'Unknown token'} to ${value}`);
-      if (distribution?.token?.id) {
-        setTokenAmount(distribution.token.id, value);
+      if (distribution?.token?.tokenId) {
+        setTokenAmount(distribution.token.tokenId, value);
       }
     }
   }, [distribution, setTokenAmount]);
 
   const updateDistributionType = useCallback((type: TokenDistributionType) => {
-    if (!distribution?.token?.id) {
+    if (!distribution?.token?.tokenId) {
       debug('Cannot update distribution type: missing token ID');
       return;
     }
     
     debug(`Updating type for ${distribution.token.name} to ${type}`);
-    setTokenDistributionType(distribution.token.id, type);
+    setTokenDistributionType(distribution.token.tokenId, type);
   }, [distribution, setTokenDistributionType]);
 
   // Format token amount properly considering decimals

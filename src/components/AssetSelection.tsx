@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
 import { useWalletAssets } from '@/hooks/useWalletAssets';
@@ -6,7 +5,6 @@ import { WalletAssets } from './WalletAssets';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
 import { toast } from 'sonner';
-import { NFTDistribution, TokenDistribution } from '@/types';
 import { createDebugLogger, flushLogs } from '@/hooks/useDebugLog';
 
 const debug = createDebugLogger('AssetSelection');
@@ -18,7 +16,9 @@ export default function AssetSelection() {
     tokenDistributions,
     nftDistributions,
     nextStep,
-    selectToken
+    selectToken,
+    selectCollection,
+    selectNFT
   } = useAirdrop();
 
   const { 
@@ -46,7 +46,7 @@ export default function AssetSelection() {
     
     // Since this logs on every render, add the selections to help debug
     if (selectedTokens.length > 0) {
-      debug('Selected tokens:', selectedTokens.map(t => ({ id: t.id, name: t.name })));
+      debug('Selected tokens:', selectedTokens.map(t => ({ tokenId: t.tokenId, name: t.name })));
     }
   }, [selectedTokens, selectedNFTs, selectedCollections, tokens, collections, tokenDistributions, nftDistributions]);
 
@@ -68,7 +68,7 @@ export default function AssetSelection() {
     });
     
     // Directly use the token objects as they come from the wallet
-    const newTokenDistributions: TokenDistribution[] = selectedTokens.map(token => {
+    const newTokenDistributions = selectedTokens.map(token => {
       // Calculate a reasonable default amount based on decimals
       const initialAmount = token.decimals > 0 
         ? 1 // A single token (e.g., 1 SigUSD)
@@ -85,21 +85,28 @@ export default function AssetSelection() {
       };
     });
     
-    // Convert selected NFTs and collections directly to NFT distributions
-    const nftDistributionsFromCollections: NFTDistribution[] = selectedCollections.map(collection => ({
+    // Create NFT distributions from selected collections
+    const nftDistributionsFromCollections = selectedCollections.map(collection => ({
       collection,
       type: '1-to-1'
     }));
     
-    const nftDistributionsFromNFTs: NFTDistribution[] = selectedNFTs
+    // Create NFT distributions from individually selected NFTs
+    const nftDistributionsFromNFTs = selectedNFTs
       // Filter out NFTs that are already part of a selected collection
       .filter(nft => !selectedCollections.some(c => 
-        c.nfts.some(n => n.id === nft.id)
+        c.nfts.some(n => n.tokenId === nft.tokenId)
       ))
       .map(nft => ({
         nft,
         type: '1-to-1'
       }));
+    
+    debug('Created distributions:', {
+      tokenDistributions: newTokenDistributions.length,
+      nftDistributionsFromCollections: nftDistributionsFromCollections.length,
+      nftDistributionsFromNFTs: nftDistributionsFromNFTs.length
+    });
     
     return {
       tokenDistributions: newTokenDistributions,
@@ -115,6 +122,15 @@ export default function AssetSelection() {
       tokenCount: newTokenDist.length,
       nftCount: newNftDist.length,
       tokens: newTokenDist.map(d => d.token.name),
+      nfts: newNftDist.map(d => {
+        if ('collection' in d && d.collection) {
+          return d.collection.name;
+        } else if ('nft' in d && d.nft) {
+          return d.nft.name;
+        } else {
+          return 'Unknown';
+        }
+      })
     });
     
     // Only update if we have selections
@@ -125,8 +141,22 @@ export default function AssetSelection() {
     
     // IMPORTANT: For each selected token, also call selectToken to ensure the context selection state is updated
     newTokenDist.forEach(dist => {
-      debug(`Explicitly selecting token in context: ${dist.token.id}`);
-      selectToken(dist.token.id);
+      debug(`Explicitly selecting token in context: ${dist.token.tokenId}`);
+      selectToken(dist.token.tokenId);
+    });
+    
+    // Also explicitly select collections and NFTs
+    selectedCollections.forEach(collection => {
+      debug(`Explicitly selecting collection in context: ${collection.id}`);
+      selectCollection(collection.id);
+    });
+    
+    selectedNFTs.forEach(nft => {
+      // Only select NFTs that aren't already part of selected collections
+      if (!selectedCollections.some(c => c.nfts.some(n => n.tokenId === nft.tokenId))) {
+        debug(`Explicitly selecting NFT in context: ${nft.tokenId}`);
+        selectNFT(nft.tokenId);
+      }
     });
     
     // Now set the distributions directly
@@ -134,10 +164,19 @@ export default function AssetSelection() {
     debug('Token distributions set directly', { count: newTokenDist.length });
     
     setNFTDistributions(newNftDist);
-    debug('NFT distributions set directly', { count: newNftDist.length });
-    
-    setLocalDistributionsSet(true);
-    flushLogs();
+    debug('NFT distributions set directly', { 
+      count: newNftDist.length, 
+      nfts: newNftDist.map(d => {
+        if ('collection' in d && d.collection) {
+          return d.collection.name;
+        } else if ('nft' in d && d.nft) {
+          return d.nft.name;
+        } else {
+          return 'Unknown';
+        }
+      }) 
+    });
+    flushLogs(); // Ensure logs are sent immediately
   };
 
   // Navigate to next step after ensuring distributions are set

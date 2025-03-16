@@ -1,4 +1,3 @@
-
 import { useEffect } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedContainer from './PixelatedContainer';
@@ -26,7 +25,7 @@ export default function DistributionConfig() {
       tokenDistributions.forEach((dist, index) => {
         debug(`Token distribution ${index}:`, {
           token: dist.token.name,
-          id: dist.token.id,
+          id: dist.token.tokenId,
           amount: dist.amount,
           type: dist.type
         });
@@ -44,7 +43,7 @@ export default function DistributionConfig() {
       tokenDistributionsCount: tokenDistributions?.length || 0,
       tokenDistributions: tokenDistributions?.map(d => ({
         name: d.token.name,
-        id: d.token.id,
+        id: d.token.tokenId,
         type: d.type,
         amount: d.amount
       })) || [],
@@ -86,7 +85,7 @@ export default function DistributionConfig() {
               <div className="space-y-4">
                 {tokenDistributions.map((distribution, index) => (
                   <TokenDistributionForm 
-                    key={`token-dist-${distribution.token.id}-${index}`} 
+                    key={`token-dist-${distribution.token.tokenId}-${index}`} 
                     distribution={distribution} 
                   />
                 ))}

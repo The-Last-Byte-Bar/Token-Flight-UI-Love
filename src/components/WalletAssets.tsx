@@ -1,13 +1,13 @@
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWalletAssets } from '@/hooks/useWalletAssets';
 import { useAirdrop } from '@/context/AirdropContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PixelatedContainer from '@/components/PixelatedContainer';
 import { RefreshCw } from 'lucide-react';
 import PixelatedButton from '@/components/PixelatedButton';
-import { Token } from '@/types';
+import { Token, NFT } from '@/types/index';
 import { createDebugLogger, flushLogs } from '@/hooks/useDebugLog';
+import { TokenCard } from './TokenCard';
 
 const debug = createDebugLogger('WalletAssets');
 
@@ -16,16 +16,30 @@ export function WalletAssets() {
     tokens, 
     collections, 
     loading, 
+    loadingMore,
     collectionsLoading,
     refreshAssets, 
     toggleTokenSelection,
     toggleCollectionSelection,
     toggleNFTSelection,
+    selectAllNFTsInCollection,
     selectedTokens,
-    selectedNFTs
+    selectedNFTs,
+    selectedCollections,
+    hasMoreTokens,
+    totalTokens,
+    loadMoreTokens
   } = useWalletAssets();
   
-  const { tokenDistributions, selectToken, unselectToken } = useAirdrop();
+  const { 
+    tokenDistributions, 
+    selectToken, 
+    unselectToken, 
+    selectCollection, 
+    unselectCollection,
+    selectNFT,
+    unselectNFT
+  } = useAirdrop();
   
   const [activeTab, setActiveTab] = useState('tokens');
   const [refreshing, setRefreshing] = useState(false);
@@ -39,10 +53,10 @@ export function WalletAssets() {
       debug(`Syncing ${selectedTokens.length} selected tokens with airdrop context`);
       
       selectedTokens.forEach(token => {
-        const isInContext = tokenDistributions.some(dist => dist.token.id === token.id);
+        const isInContext = tokenDistributions.some(dist => dist.token.tokenId === token.tokenId);
         if (!isInContext) {
-          debug(`Token ${token.name} (${token.id}) is selected but not in context, adding it`);
-          selectToken(token.id);
+          debug(`Token ${token.name} (${token.tokenId}) is selected but not in context, adding it`);
+          selectToken(token.tokenId);
         }
       });
     }
@@ -56,31 +70,29 @@ export function WalletAssets() {
     setTimeout(() => setRefreshing(false), 1000);
   };
 
-  // Custom token selection handler to sync with both wallet assets and airdrop context
-  const handleTokenSelection = (tokenId: string) => {
-    debug(`Token selection toggled: ${tokenId}`);
+  // Token selection handler
+  const handleTokenClick = (tokenId: string) => {
+    debug('Token selection toggled:', tokenId);
     
-    // Get the current selection state before toggling
-    const isCurrentlySelected = selectedTokens.some(t => t.id === tokenId);
-    
-    // Toggle in wallet assets
-    toggleTokenSelection(tokenId);
-    
-    // Sync with airdrop context based on the new selection state
-    if (!isCurrentlySelected) {
+    if (selectedTokens.some(token => token.tokenId === tokenId)) {
+      debug(`Token ${tokenId} was already selected, now unselecting in context`);
+      unselectToken(tokenId);
+    } else {
       debug(`Token ${tokenId} was not selected before, now selecting in context`);
       selectToken(tokenId);
-    } else {
-      debug(`Token ${tokenId} was selected before, now unselecting in context`);
-      unselectToken(tokenId);
     }
     
-    flushLogs();
+    toggleTokenSelection(tokenId);
   };
 
   // Format token amount properly considering decimals
   const formatTokenAmount = (token: Token) => {
-    const amount = Number(token.amount) / Math.pow(10, token.decimals || 0);
+    // Convert bigint to number for display
+    const amountNum = typeof token.amount === 'bigint' 
+      ? Number(token.amount) 
+      : Number(token.amount);
+    
+    const amount = amountNum / Math.pow(10, token.decimals || 0);
     
     // Return the number without trailing zeros if it's a whole number
     if (amount % 1 === 0) {
@@ -95,27 +107,197 @@ export function WalletAssets() {
   };
   
   const isTokenSelected = (tokenId: string) => {
-    return selectedTokens.some(t => t.id === tokenId);
+    return selectedTokens.some(t => t.tokenId === tokenId);
   };
   
   const isNFTSelected = (nftId: string) => {
-    return selectedNFTs.some(n => n.id === nftId);
+    return selectedNFTs.some(n => n.tokenId === nftId);
+  };
+  
+  // Check if a collection is selected
+  const isCollectionSelected = (collectionId: string) => {
+    return selectedCollections.some(c => c.id === collectionId);
+  };
+  
+  // Create a reference for the tokens container
+  const tokensContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Add a scroll handler to load more tokens
+  const handleScroll = useCallback(() => {
+    if (!tokensContainerRef.current || loading || loadingMore || !hasMoreTokens) return;
+    
+    const container = tokensContainerRef.current;
+    // Check if we've scrolled near the bottom (within 200px)
+    const isNearBottom = 
+      container.scrollHeight - container.scrollTop - container.clientHeight < 200;
+      
+    if (isNearBottom) {
+      debug('Near bottom of scroll, loading more tokens');
+      loadMoreTokens();
+    }
+  }, [loading, loadingMore, hasMoreTokens, loadMoreTokens]);
+  
+  // Add scroll event listener to the tokens container
+  useEffect(() => {
+    const container = tokensContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
+  
+  // Handle collection selection to sync with airdrop context
+  const handleCollectionSelection = (collectionId: string) => {
+    debug(`Collection selection toggled: ${collectionId}`);
+    
+    // Get current selection state before toggling
+    const isCurrentlySelected = selectedCollections.some(c => c.id === collectionId);
+    
+    // Toggle in wallet assets
+    toggleCollectionSelection(collectionId);
+    
+    // Sync with airdrop context based on the new selection state
+    if (!isCurrentlySelected) {
+      debug(`Collection ${collectionId} was not selected before, now selecting in context`);
+      selectCollection(collectionId);
+    } else {
+      debug(`Collection ${collectionId} was selected before, now unselecting in context`);
+      unselectCollection(collectionId);
+    }
+    
+    flushLogs();
+  };
+  
+  // Handle NFT selection to sync with airdrop context
+  const handleNFTSelection = (nftId: string) => {
+    debug(`NFT selection toggled: ${nftId}`);
+    
+    // Get current selection state before toggling
+    const isCurrentlySelected = selectedNFTs.some(n => n.tokenId === nftId);
+    
+    // Toggle in wallet assets
+    toggleNFTSelection(nftId);
+    
+    // Sync with airdrop context based on the new selection state
+    if (!isCurrentlySelected) {
+      debug(`NFT ${nftId} was not selected before, now selecting in context`);
+      selectNFT(nftId);
+    } else {
+      debug(`NFT ${nftId} was selected before, now unselecting in context`);
+      unselectNFT(nftId);
+    }
+    
+    flushLogs();
+  };
+  
+  // Handle "Select All" for a collection
+  const handleSelectAllNFTs = (collectionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    debug(`Selecting all NFTs in collection: ${collectionId}`);
+    
+    // First, select the collection in wallet assets
+    selectAllNFTsInCollection(collectionId);
+    
+    // Then, ensure the collection is selected in airdrop context
+    selectCollection(collectionId);
+    
+    // Find the collection to get all its NFTs
+    const collection = collections.find(c => c.id === collectionId);
+    if (collection) {
+      // Filter out the collection token itself and only select actual NFTs
+      const actualNFTs = collection.nfts.filter(nft => 
+        nft.tokenId !== collectionId
+      );
+      
+      debug(`Selecting ${actualNFTs.length} NFTs in airdrop context (filtered from ${collection.nfts.length} total)`);
+      
+      // Also select all individual NFTs in the collection in airdrop context
+      actualNFTs.forEach(nft => {
+        selectNFT(nft.tokenId);
+      });
+    }
+    
+    flushLogs();
+  };
+  
+  const handleLoadMore = () => {
+    if (hasMoreTokens && !loadingMore) {
+      loadMoreTokens();
+    }
+  };
+  
+  // Handler to deselect all tokens
+  const deselectAllTokens = () => {
+    debug('Deselecting all tokens');
+    
+    // Unselect each token in the airdrop context
+    selectedTokens.forEach(token => {
+      debug(`Unselecting token: ${token.tokenId}`);
+      unselectToken(token.tokenId);
+    });
+    
+    // Clear the local selection state by manually toggling each token
+    selectedTokens.forEach(token => {
+      toggleTokenSelection(token.tokenId);
+    });
+  };
+  
+  // Handler to deselect all collections
+  const deselectAllCollections = () => {
+    debug('Deselecting all collections and NFTs');
+    
+    // Unselect each collection and NFT in the airdrop context
+    selectedCollections.forEach(collection => {
+      debug(`Unselecting collection: ${collection.id}`);
+      unselectCollection(collection.id);
+      toggleCollectionSelection(collection.id);
+    });
+    
+    selectedNFTs.forEach(nft => {
+      debug(`Unselecting NFT: ${nft.tokenId}`);
+      unselectNFT(nft.tokenId);
+      toggleNFTSelection(nft.tokenId);
+    });
   };
   
   return (
-    <div className="w-full">
-      <div className="flex flex-row items-center justify-between mb-4">
-        <div>
-          <h3 className="text-xl text-deepsea-bright font-pixel">Wallet Assets</h3>
-          <p className="text-sm text-gray-400">Your tokens and NFT collections</p>
+    <PixelatedContainer className="p-0 overflow-hidden bg-transparent">
+      <div className="flex justify-between items-center px-6 pt-4">
+        <h2 className="text-xl font-bold">Wallet Assets</h2>
+        <div className="flex gap-3">
+          {activeTab === 'tokens' && selectedTokens.length > 0 && (
+            <PixelatedButton
+              variant="destructive"
+              size="sm"
+              onClick={deselectAllTokens}
+              className="px-3 py-1"
+            >
+              Deselect All
+            </PixelatedButton>
+          )}
+          
+          {activeTab === 'collections' && (selectedCollections.length > 0 || selectedNFTs.length > 0) && (
+            <PixelatedButton
+              variant="destructive"
+              size="sm"
+              onClick={deselectAllCollections}
+              className="px-3 py-1"
+            >
+              Deselect All
+            </PixelatedButton>
+          )}
+        
+          <PixelatedButton 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh}
+            className="px-3 py-1"
+            disabled={refreshing || loading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </PixelatedButton>
         </div>
-        <PixelatedButton 
-          className="p-2"
-          onClick={handleRefresh} 
-          disabled={refreshing || loading}
-        >
-          <RefreshCw className="h-4 w-4" />
-        </PixelatedButton>
       </div>
       
       <Tabs defaultValue="tokens" value={activeTab} onValueChange={setActiveTab}>
@@ -130,7 +312,7 @@ export function WalletAssets() {
         </TabsList>
         
         <TabsContent value="tokens" className="mt-0">
-          {loading ? (
+          {loading && tokens.length === 0 ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
                 <PixelatedContainer key={i} className="h-12 w-full animate-pulse bg-gray-700/30">
@@ -139,35 +321,32 @@ export function WalletAssets() {
               ))}
             </div>
           ) : tokens.length > 0 ? (
-            <div className="space-y-2">
-              {tokens.map(token => (
-                <div key={token.id} onClick={() => handleTokenSelection(token.id)}>
-                  <PixelatedContainer 
-                    className={`flex items-center justify-between p-3 cursor-pointer ${isTokenSelected(token.id) ? 'border-deepsea-bright' : ''}`}
+            <div 
+              className="space-y-2 max-h-[60vh] overflow-y-auto pr-1" 
+              ref={tokensContainerRef}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
+                {tokens.map((token, index) => (
+                  <TokenCard 
+                    key={`token-${token.tokenId}-${index}`}
+                    token={token}
+                    selected={selectedTokens.some(t => t.tokenId === token.tokenId)}
+                    onClick={() => handleTokenClick(token.tokenId)}
+                  />
+                ))}
+              </div>
+              
+              {hasMoreTokens && (
+                <div className="flex justify-center mt-4 mb-6">
+                  <PixelatedButton
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="px-4 py-2"
                   >
-                    <div className="flex items-center space-x-2 truncate">
-                      <div className="min-w-8 h-8 rounded-full bg-deepsea-bright/20 flex items-center justify-center text-xs font-bold">
-                        {token.name.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div className="truncate">
-                        <div className="font-medium text-white">{token.name || token.id.substring(0, 8)}</div>
-                        <div className="text-sm text-gray-400 truncate">
-                          {formatTokenAmount(token)} units
-                        </div>
-                      </div>
-                    </div>
-                    <PixelatedButton
-                      className={`ml-2 text-xs py-1 px-3 ${isTokenSelected(token.id) ? 'bg-deepsea-bright' : 'bg-gray-700'}`}
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent parent onClick from firing
-                        handleTokenSelection(token.id);
-                      }}
-                    >
-                      {isTokenSelected(token.id) ? 'Selected' : 'Select'}
-                    </PixelatedButton>
-                  </PixelatedContainer>
+                    {loadingMore ? 'Loading...' : `Load More (${tokens.length}/${totalTokens})`}
+                  </PixelatedButton>
                 </div>
-              ))}
+              )}
             </div>
           ) : (
             <PixelatedContainer className="text-center py-8 text-gray-500">
@@ -190,46 +369,55 @@ export function WalletAssets() {
           ) : collections.length > 0 ? (
             <div className="space-y-4">
               {collections.map(collection => (
-                <PixelatedContainer key={collection.id} className="overflow-hidden">
+                <PixelatedContainer 
+                  key={collection.id} 
+                  className={`overflow-hidden ${isCollectionSelected(collection.id) ? 'border-deepsea-bright' : ''}`}
+                >
                   <div 
-                    className="px-4 py-3 cursor-pointer border-b border-gray-700"
-                    onClick={() => toggleCollectionSelection(collection.id)}
+                    className="px-4 py-3 cursor-pointer border-b border-gray-700 flex justify-between items-center"
+                    onClick={() => handleCollectionSelection(collection.id)}
                   >
-                    <h4 className="text-lg font-pixel text-deepsea-bright">{collection.name}</h4>
-                    <p className="text-sm text-gray-400">
-                      {collection.nfts.length} NFTs in this collection
-                    </p>
+                    <div>
+                      <h4 className="text-lg font-pixel text-deepsea-bright">{collection.name}</h4>
+                      <p className="text-sm text-gray-400">
+                        {collection.nfts.length} NFTs in this collection
+                      </p>
+                    </div>
+                    <PixelatedButton
+                      className="ml-2 text-xs py-1 px-3"
+                      onClick={(e) => handleSelectAllNFTs(collection.id, e)}
+                    >
+                      Select All
+                    </PixelatedButton>
                   </div>
-                  <div className="p-4">
-                    <div className="grid grid-cols-3 gap-2">
-                      {collection.nfts.map(nft => (
-                        <div 
-                          key={nft.id} 
-                          className={`
-                            aspect-square overflow-hidden cursor-pointer
-                            border-2 ${isNFTSelected(nft.id) ? 'border-deepsea-bright' : 'border-gray-700'}
-                          `}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleNFTSelection(nft.id);
-                          }}
-                        >
-                          <div className="relative w-full h-full">
-                            <img 
-                              src={nft.imageUrl || `https://via.placeholder.com/150?text=${nft.name}`} 
-                              alt={nft.name}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                // Handle image load error by showing placeholder
-                                (e.target as HTMLImageElement).src = `https://via.placeholder.com/150?text=${nft.name}`;
-                              }}
-                            />
-                            {isNFTSelected(nft.id) && (
-                              <div className="absolute inset-0 bg-deepsea-bright/20 flex items-center justify-center">
-                                <span className="text-white text-xs font-pixel">Selected</span>
+                  <div className="p-2">
+                    <div className="space-y-2">
+                      {collection.nfts.map((nft, index) => (
+                        <div key={`nft-${nft.tokenId}-${index}`} onClick={() => handleNFTSelection(nft.tokenId)}>
+                          <PixelatedContainer 
+                            className={`flex items-center justify-between p-3 cursor-pointer ${isNFTSelected(nft.tokenId) ? 'border-deepsea-bright' : ''}`}
+                          >
+                            <div className="flex items-center space-x-2 truncate">
+                              <div className="min-w-8 h-8 rounded-full bg-deepsea-bright/20 flex items-center justify-center text-xs font-bold">
+                                {nft.name.substring(0, 2).toUpperCase()}
                               </div>
-                            )}
-                          </div>
+                              <div className="truncate">
+                                <div className="font-medium text-white">{nft.name}</div>
+                                <div className="text-sm text-gray-400 truncate">
+                                  {collection.name} • ID: {nft.tokenId.substring(0, 8)}...
+                                </div>
+                              </div>
+                            </div>
+                            <PixelatedButton
+                              className={`ml-2 text-xs py-1 px-3 ${isNFTSelected(nft.tokenId) ? 'bg-deepsea-bright' : 'bg-gray-700'}`}
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent parent onClick from firing
+                                handleNFTSelection(nft.tokenId);
+                              }}
+                            >
+                              {isNFTSelected(nft.tokenId) ? 'Selected' : 'Select'}
+                            </PixelatedButton>
+                          </PixelatedContainer>
                         </div>
                       ))}
                     </div>
@@ -246,6 +434,6 @@ export function WalletAssets() {
           )}
         </TabsContent>
       </Tabs>
-    </div>
+    </PixelatedContainer>
   );
 }

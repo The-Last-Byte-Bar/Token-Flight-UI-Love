@@ -2,6 +2,7 @@ import { AirdropConfig, NFTDistribution, Recipient, TokenDistribution, WalletInf
 import { toast } from "sonner";
 import { isConnectedToNautilus, isNautilusAvailable } from "@/lib/wallet";
 import { TransactionBuilder, OutputBuilder } from "@fleet-sdk/core";
+import { signAndSubmitTx, calculateRecommendedFee } from "@/lib/transactions";
 
 /**
  * Service to handle token and NFT airdrops using Fleet SDK
@@ -54,29 +55,52 @@ export class AirdropService {
 
       // Set change address and fee
       txBuilder.sendChangeTo(wallet.changeAddress || wallet.address || '');
-      txBuilder.payFee("1000000"); // 0.001 ERG fee
 
       // Build the unsigned transaction
       const unsignedTx = txBuilder.build().toEIP12Object();
+      
+      // Calculate recommended fee based on transaction size/complexity
+      const recommendedFee = calculateRecommendedFee(unsignedTx);
+      const defaultFee = "1000000"; // 0.001 ERG
+      
+      // If we need a higher fee, rebuild the transaction with the recommended fee
+      if (BigInt(recommendedFee) > BigInt(defaultFee)) {
+        console.log(`Using higher recommended fee: ${recommendedFee} instead of default ${defaultFee}`);
+        txBuilder.payFee(recommendedFee);
+        const updatedUnsignedTx = txBuilder.build().toEIP12Object();
+        console.log('Rebuilt transaction with higher fee');
+        
+        console.log('Airdrop transaction built, sending for signing and submission', {
+          inputsCount: updatedUnsignedTx.inputs?.length || 0,
+          outputsCount: updatedUnsignedTx.outputs?.length || 0,
+          tokenDistributions: config.tokenDistributions.length,
+          nftDistributions: config.nftDistributions.length,
+          fee: recommendedFee
+        });
+        
+        return await signAndSubmitTx(updatedUnsignedTx);
+      }
+      
+      console.log('Airdrop transaction built, sending for signing and submission', {
+        inputsCount: unsignedTx.inputs?.length || 0,
+        outputsCount: unsignedTx.outputs?.length || 0,
+        tokenDistributions: config.tokenDistributions.length,
+        nftDistributions: config.nftDistributions.length,
+        fee: defaultFee
+      });
 
-      // Sign the transaction
-      const signedTx = await window.ergo?.sign_tx(unsignedTx);
+      // Use the enhanced signAndSubmitTx function instead of direct calls
+      return await signAndSubmitTx(unsignedTx);
       
-      if (!signedTx) {
-        throw new Error("Failed to sign transaction");
-      }
-      
-      // Submit the transaction
-      const txId = await window.ergo?.submit_tx(signedTx);
-      
-      if (!txId) {
-        throw new Error("Failed to submit transaction");
-      }
-      
-      return txId;
     } catch (error) {
       console.error("Error processing airdrop:", error);
-      toast.error(`Airdrop error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      
+      // Enhanced error logging
+      if (typeof error === 'object' && error !== null) {
+        console.error('Airdrop error details:', JSON.stringify(error, null, 2));
+      }
+      
+      toast.error(`Airdrop error: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
       throw error;
     }
   }
@@ -94,8 +118,8 @@ export class AirdropService {
       
       for (const recipient of recipients) {
         const outputBuilder = new OutputBuilder(
-          recipient.address,
-          "1000000" // Minimum ERG required (0.001 ERG)
+          "1000000", // Minimum ERG required (0.001 ERG)
+          recipient.address
         );
         
         // Calculate amount based on distribution type
@@ -105,7 +129,7 @@ export class AirdropService {
         
         // Add token to output
         outputBuilder.addTokens([{
-          tokenId: token.id,
+          tokenId: token.tokenId,
           amount: tokenAmount.toString()
         }]);
         
@@ -133,8 +157,8 @@ export class AirdropService {
           
           if (recipient) {
             const outputBuilder = new OutputBuilder(
-              recipient.address,
-              "1000000" // Minimum ERG required (0.001 ERG)
+              "1000000", // Minimum ERG required (0.001 ERG)
+              recipient.address
             );
             
             // Add NFT token (amount is always 1 for NFTs)
@@ -152,8 +176,8 @@ export class AirdropService {
         for (const recipient of recipients) {
           for (const nft of distribution.collection.nfts.filter(n => n.selected)) {
             const outputBuilder = new OutputBuilder(
-              recipient.address,
-              "1000000" // Minimum ERG required (0.001 ERG)
+              "1000000", // Minimum ERG required (0.001 ERG)
+              recipient.address
             );
             
             // Add NFT token
@@ -181,8 +205,8 @@ export class AirdropService {
           const recipient = recipients[i % recipients.length];
           
           const outputBuilder = new OutputBuilder(
-            recipient.address,
-            "1000000" // Minimum ERG required (0.001 ERG)
+            "1000000", // Minimum ERG required (0.001 ERG)
+            recipient.address
           );
           
           // Add NFT token

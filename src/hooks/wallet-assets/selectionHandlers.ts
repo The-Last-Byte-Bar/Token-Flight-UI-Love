@@ -1,5 +1,4 @@
-
-import { Collection, NFT, Token } from '@/types';
+import { Collection, NFT, Token } from '@/types/index';
 import { WalletAssetsState, TokenSelection, NFTSelection, CollectionSelection } from './types';
 
 /**
@@ -12,17 +11,17 @@ export const toggleTokenSelection = (
   updatedState: WalletAssetsState;
   selection: TokenSelection;
 } => {
-  const token = state.tokens.find(t => t.id === tokenId);
+  const token = state.tokens.find(t => t.tokenId === tokenId);
   
   if (!token) return { 
     updatedState: state,
     selection: { tokenId, isSelected: false, newSelectionCount: state.selectedTokens.length }
   };
   
-  const isSelected = state.selectedTokens.some(t => t.id === tokenId);
+  const isSelected = state.selectedTokens.some(t => t.tokenId === tokenId);
   
   const updatedSelectedTokens = isSelected
-    ? state.selectedTokens.filter(t => t.id !== tokenId)
+    ? state.selectedTokens.filter(t => t.tokenId !== tokenId)
     : [...state.selectedTokens, token];
   
   console.log('[useWalletAssets] Token selection toggled:', {
@@ -79,6 +78,16 @@ export const toggleCollectionSelection = (
     newSelectionCount: updatedSelectedCollections.length
   });
   
+  // Add more detailed logging to help debug NFT distribution issues
+  console.log('[useWalletAssets] Collection detail:', {
+    name: collection.name,
+    nftCount: collection.nfts.length,
+    firstFewNfts: collection.nfts.slice(0, 3).map(n => ({
+      tokenId: n.tokenId,
+      name: n.name
+    }))
+  });
+  
   return {
     updatedState: {
       ...state,
@@ -108,7 +117,7 @@ export const toggleNFTSelection = (
   let targetCollection: Collection | undefined;
   
   for (const collection of state.collections) {
-    const nft = collection.nfts.find(n => n.id === nftId);
+    const nft = collection.nfts.find(n => n.tokenId === nftId);
     if (nft) {
       targetNFT = nft;
       targetCollection = collection;
@@ -121,7 +130,7 @@ export const toggleNFTSelection = (
     selection: null
   };
   
-  const isSelected = state.selectedNFTs.some(n => n.id === nftId);
+  const isSelected = state.selectedNFTs.some(n => n.tokenId === nftId);
   
   // Update NFT's selected state in its collection
   const updatedCollections = state.collections.map(collection => {
@@ -129,23 +138,24 @@ export const toggleNFTSelection = (
       return {
         ...collection,
         nfts: collection.nfts.map(nft => 
-          nft.id === nftId ? { ...nft, selected: !isSelected } : nft
+          nft.tokenId === nftId ? { ...nft, selected: !isSelected } : nft
         )
       };
     }
     return collection;
   });
   
-  // Update selected NFTs
+  // Update selected NFTs - ensure we add or remove the correct NFT
   const updatedSelectedNFTs = isSelected
-    ? state.selectedNFTs.filter(n => n.id !== nftId)
+    ? state.selectedNFTs.filter(n => n.tokenId !== nftId)
     : [...state.selectedNFTs, { ...targetNFT, selected: true }];
   
   console.log('[useWalletAssets] NFT selection toggled:', {
     nftId,
     collectionId: targetCollection.id,
     isSelected,
-    newSelectionCount: updatedSelectedNFTs.length
+    newSelectionCount: updatedSelectedNFTs.length,
+    selection: !isSelected ? 'adding to selection' : 'removing from selection'
   });
   
   return {
@@ -159,6 +169,75 @@ export const toggleNFTSelection = (
       collectionId: targetCollection.id,
       isSelected,
       newSelectionCount: updatedSelectedNFTs.length
+    }
+  };
+};
+
+/**
+ * Select all NFTs in a collection at once
+ */
+export const selectAllNFTsInCollection = (
+  collectionId: string,
+  state: WalletAssetsState
+): {
+  updatedState: WalletAssetsState;
+} => {
+  const collection = state.collections.find(c => c.id === collectionId);
+  
+  if (!collection) return { updatedState: state };
+  
+  // Filter out the collection token itself (which has the same ID as the collection)
+  // and only select actual NFTs - if type is not specified, assume it's an NFT
+  const actualNFTs = collection.nfts.filter(nft => 
+    nft.tokenId !== collectionId && 
+    // If type is specified, check if it's a valid NFT type, otherwise assume it's an NFT
+    (nft.type === undefined || nft.type === 'picture' || nft.type === 'audio' || nft.type === 'video')
+  );
+  
+  console.log('[useWalletAssets] Filtering NFTs in collection:', {
+    collectionId,
+    totalItems: collection.nfts.length,
+    actualNFTs: actualNFTs.length,
+    filtered: collection.nfts.length - actualNFTs.length
+  });
+  
+  // Mark all actual NFTs in the collection as selected
+  const updatedCollections = state.collections.map(c => {
+    if (c.id === collectionId) {
+      return {
+        ...c,
+        nfts: c.nfts.map(nft => ({
+          ...nft,
+          // Only select if it's an actual NFT, not the collection token
+          selected: nft.tokenId !== collectionId && 
+                   (nft.type === undefined || nft.type === 'picture' || nft.type === 'audio' || nft.type === 'video')
+        }))
+      };
+    }
+    return c;
+  });
+  
+  // Add all NFTs from this collection to selectedNFTs (avoiding duplicates)
+  const existingSelectedIds = new Set(state.selectedNFTs.map(nft => nft.tokenId));
+  const nftsToAdd = actualNFTs.filter(nft => !existingSelectedIds.has(nft.tokenId));
+  
+  const updatedSelectedNFTs = [
+    ...state.selectedNFTs,
+    ...nftsToAdd.map(nft => ({ ...nft, selected: true }))
+  ];
+  
+  console.log('[useWalletAssets] Selected all NFTs in collection:', {
+    collectionId,
+    totalNFTs: actualNFTs.length,
+    newlySelected: nftsToAdd.length,
+    totalSelected: updatedSelectedNFTs.length
+  });
+  
+  return {
+    updatedState: {
+      ...state,
+      collections: updatedCollections,
+      selectedNFTs: updatedSelectedNFTs
     }
   };
 };

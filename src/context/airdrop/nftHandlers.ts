@@ -1,5 +1,5 @@
-
-import { Collection, NFT, NFTDistribution, NFTDistributionType } from '@/types';
+import { Collection, NFT, NFTDistribution, NFTDistributionType } from '@/types/index';
+import { toast } from 'sonner';
 import { createDebugLogger } from '@/hooks/useDebugLog';
 
 const debug = createDebugLogger('AirdropNFTHandlers');
@@ -11,25 +11,52 @@ export const handleSelectCollection = (
   collectionId: string
 ) => {
   console.log(`[AirdropContext] Selecting collection: ${collectionId}`);
+  debug(`Selecting collection: ${collectionId}`);
   
   const collection = collections.find(c => c.id === collectionId);
   if (!collection) {
     console.error(`[AirdropContext] Cannot select collection ${collectionId}: Not found`);
+    debug(`Cannot select collection ${collectionId}: Not found in context collections`, {
+      availableCollections: collections.map(c => ({id: c.id, name: c.name}))
+    });
     return;
   }
+  
+  // Filter out the collection token itself (which has the same ID as the collection)
+  const nftsCount = collection.nfts.filter(nft => nft.tokenId !== collectionId).length;
+  
+  if (nftsCount === 0) {
+    debug(`Collection ${collection.name} has no valid NFTs to distribute`);
+    toast.warning('This collection contains no distributable NFTs');
+    return;
+  }
+  
+  debug(`Found collection: ${collection.name} with ${nftsCount} distributable NFTs`);
   
   if (nftDistributions.some(dist => dist.collection?.id === collectionId)) {
     console.log(`[AirdropContext] Collection ${collectionId} already in distributions`);
+    debug(`Collection ${collectionId} already in distributions`);
     return;
   }
   
-  setNFTDistributions(prev => [
-    ...prev, 
-    { 
-      collection,
-      type: '1-to-1'
-    }
-  ]);
+  const newDistribution = { 
+    collection,
+    type: 'random' as NFTDistributionType
+  };
+  
+  debug(`Adding new NFT distribution:`, {
+    collectionId: collection.id,
+    collectionName: collection.name,
+    nftCount: collection.nfts.length,
+    distributableNfts: nftsCount,
+    currentDistributions: nftDistributions.length
+  });
+  
+  setNFTDistributions(prev => {
+    const updated = [...prev, newDistribution];
+    debug(`NFT distributions updated: ${prev.length} -> ${updated.length}`);
+    return updated;
+  });
   
   console.log(`[AirdropContext] Collection ${collectionId} added to distributions`);
 };
@@ -55,10 +82,23 @@ export const handleSelectNFT = (
 ) => {
   console.log(`[AirdropContext] Selecting NFT: ${nftId}`);
   
+  // Check if this NFT is actually a collection token (same ID as collection ID)
+  const isCollectionToken = collections.some(c => c.id === nftId);
+  if (isCollectionToken) {
+    debug(`Ignoring selection of collection token ${nftId} - this is not a distributable NFT`);
+    toast.warning('Collection tokens cannot be distributed directly. Please select individual NFTs instead.');
+    return;
+  }
+  
   let nft: NFT | undefined;
+  let parentCollection: Collection | undefined;
+  
   for (const collection of collections) {
-    nft = collection.nfts.find(n => n.id === nftId);
-    if (nft) break;
+    nft = collection.nfts.find(n => n.tokenId === nftId);
+    if (nft) {
+      parentCollection = collection;
+      break;
+    }
   }
   
   if (!nft) {
@@ -66,16 +106,21 @@ export const handleSelectNFT = (
     return;
   }
   
-  if (nftDistributions.some(dist => dist.nft?.id === nftId)) {
+  if (nftDistributions.some(dist => dist.nft?.tokenId === nftId)) {
     console.log(`[AirdropContext] NFT ${nftId} already in distributions`);
     return;
   }
+  
+  debug(`Adding NFT ${nft.name} to distributions`);
+  debug(`Parent collection: ${parentCollection?.name || 'Unknown'}`);
   
   setNFTDistributions(prev => [
     ...prev, 
     { 
       nft,
-      type: '1-to-1'
+      collection: parentCollection,
+      type: 'random',
+      amount: 1
     }
   ]);
   
@@ -89,32 +134,52 @@ export const handleUnselectNFT = (
   console.log(`[AirdropContext] Unselecting NFT: ${nftId}`);
   
   setNFTDistributions(prev => 
-    prev.filter(distribution => distribution.nft?.id !== nftId)
+    prev.filter(distribution => distribution.nft?.tokenId !== nftId)
   );
   
   console.log(`[AirdropContext] NFT ${nftId} removed from distributions`);
 };
 
+// Handle setting the distribution type
 export const handleSetNFTDistributionType = (
   setNFTDistributions: React.Dispatch<React.SetStateAction<NFTDistribution[]>>,
-  entityId: string, 
+  entityId: string,
   type: NFTDistributionType
 ) => {
-  console.log(`[AirdropContext] Setting NFT distribution type to ${type} for entity: ${entityId}`);
+  console.log(`[AirdropContext] Setting distribution type for ${entityId} to ${type}`);
   
   setNFTDistributions(prev => 
-    prev.map(nd => {
-      if ((nd.collection && nd.collection.id === entityId) || 
-          (nd.nft && nd.nft.id === entityId)) {
-        console.log(`[AirdropContext] Found matching distribution to update`, {
-          isCollection: !!nd.collection,
-          isNft: !!nd.nft,
-          currentType: nd.type,
-          newType: type
-        });
-        return { ...nd, type };
+    prev.map(distribution => {
+      // Check if this is the distribution we're looking for
+      if (
+        (distribution.nft?.tokenId === entityId) || 
+        (distribution.collection?.id === entityId && !distribution.nft)
+      ) {
+        return { ...distribution, type };
       }
-      return nd;
+      return distribution;
+    })
+  );
+};
+
+// Handle setting the NFT amount for a distribution
+export const handleSetNFTAmount = (
+  setNFTDistributions: React.Dispatch<React.SetStateAction<NFTDistribution[]>>,
+  entityId: string,
+  amount: number
+) => {
+  console.log(`[AirdropContext] Setting amount for ${entityId} to ${amount}`);
+  
+  setNFTDistributions(prev => 
+    prev.map(distribution => {
+      // Check if this is the distribution we're looking for
+      if (
+        (distribution.nft?.tokenId === entityId) || 
+        (distribution.collection?.id === entityId && !distribution.nft)
+      ) {
+        return { ...distribution, amount };
+      }
+      return distribution;
     })
   );
 };

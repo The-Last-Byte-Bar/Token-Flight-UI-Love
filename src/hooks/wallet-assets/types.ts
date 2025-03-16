@@ -1,5 +1,4 @@
-
-import { Collection, NFT, Token } from '@/types';
+import { Collection, NFT, Token } from '@/types/index';
 
 export interface WalletAssetsState {
   tokens: Token[];
@@ -8,9 +7,13 @@ export interface WalletAssetsState {
   selectedCollections: Collection[];
   selectedNFTs: NFT[];
   loading: boolean;
-  collectionsLoading?: boolean;
+  loadingMore: boolean;
+  collectionsLoading: boolean;
   error: string | null;
-  collectionsError?: string | null;
+  collectionsError: string | null;
+  totalTokens: number;
+  hasMoreTokens: boolean;
+  currentTokensPage: number;
 }
 
 export interface TokenSelection {

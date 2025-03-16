@@ -1,9 +1,8 @@
-
 import { useState, useEffect } from 'react';
 import { useWallet } from '@/context/WalletContext';
 import { WalletAssetsState } from './types';
-import { toggleTokenSelection, toggleCollectionSelection, toggleNFTSelection } from './selectionHandlers';
-import { loadWalletAssets, resetWalletAssets } from './assetLoaders';
+import { toggleTokenSelection, toggleCollectionSelection, toggleNFTSelection, selectAllNFTsInCollection } from './selectionHandlers';
+import { loadWalletAssets, loadMoreTokens, resetWalletAssets } from './assetLoaders';
 
 /**
  * Hook to manage wallet assets (tokens, collections, NFTs) and their selection state
@@ -17,9 +16,13 @@ export function useWalletAssets() {
     selectedCollections: [],
     selectedNFTs: [],
     loading: false,
+    loadingMore: false,
     collectionsLoading: false,
     error: null,
-    collectionsError: null
+    collectionsError: null,
+    totalTokens: 0,
+    hasMoreTokens: false,
+    currentTokensPage: 0
   });
 
   // Load tokens and collections when wallet is connected
@@ -32,9 +35,14 @@ export function useWalletAssets() {
     }
   }, [wallet.connected]);
 
-  // Load all assets from the wallet
-  const loadAssets = async () => {
-    return loadWalletAssets(setState);
+  // Load initial batch of assets from the wallet
+  const loadAssets = async (limit = 20, offset = 0) => {
+    return loadWalletAssets(setState, limit, offset);
+  };
+
+  // Load more tokens when scrolling or clicking "Load More"
+  const handleLoadMoreTokens = async (limit = 20) => {
+    return loadMoreTokens(setState, limit);
   };
 
   // Handle token selection
@@ -55,6 +63,12 @@ export function useWalletAssets() {
     setState(updatedState);
   };
 
+  // Handle selecting all NFTs in a collection
+  const handleSelectAllNFTsInCollection = (collectionId: string) => {
+    const { updatedState } = selectAllNFTsInCollection(collectionId, state);
+    setState(updatedState);
+  };
+
   // Force refresh of wallet assets
   const refreshAssets = async () => {
     if (wallet.connected) {
@@ -68,6 +82,8 @@ export function useWalletAssets() {
     refreshAssets,
     toggleTokenSelection: handleToggleTokenSelection,
     toggleCollectionSelection: handleToggleCollectionSelection,
-    toggleNFTSelection: handleToggleNFTSelection
+    toggleNFTSelection: handleToggleNFTSelection,
+    selectAllNFTsInCollection: handleSelectAllNFTsInCollection,
+    loadMoreTokens: handleLoadMoreTokens
   };
 }

@@ -1,15 +1,18 @@
-
 import { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-interface PixelatedContainerProps {
+export interface PixelatedContainerProps {
   children: ReactNode;
   className?: string;
+  onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
-const PixelatedContainer = ({ children, className }: PixelatedContainerProps) => {
+const PixelatedContainer = ({ children, className, onClick }: PixelatedContainerProps) => {
   return (
-    <div className={cn("pixel-card relative overflow-hidden", className)}>
+    <div 
+      className={cn("pixel-card relative overflow-hidden", className)}
+      onClick={onClick}
+    >
       {/* Animated bubbles in background */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {Array.from({ length: 10 }).map((_, i) => (
