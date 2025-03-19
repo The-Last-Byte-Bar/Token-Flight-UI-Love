@@ -169,7 +169,7 @@ export function WalletAssets() {
   };
   
   // Handle NFT selection to sync with airdrop context
-  const handleNFTSelection = (nftId: string) => {
+  const handleNFTSelection = (nftId: string, collectionId: string) => {
     debug(`NFT selection toggled: ${nftId}`);
     
     // Get current selection state before toggling
@@ -181,7 +181,7 @@ export function WalletAssets() {
     // Sync with airdrop context based on the new selection state
     if (!isCurrentlySelected) {
       debug(`NFT ${nftId} was not selected before, now selecting in context`);
-      selectNFT(nftId);
+      selectNFT(nftId, collectionId);
     } else {
       debug(`NFT ${nftId} was selected before, now unselecting in context`);
       unselectNFT(nftId);
@@ -198,23 +198,28 @@ export function WalletAssets() {
     // First, select the collection in wallet assets
     selectAllNFTsInCollection(collectionId);
     
-    // Then, ensure the collection is selected in airdrop context
-    selectCollection(collectionId);
-    
-    // Find the collection to get all its NFTs
+    // Get the full collection data from wallet assets context
     const collection = collections.find(c => c.id === collectionId);
+    
     if (collection) {
-      // Filter out the collection token itself and only select actual NFTs
-      const actualNFTs = collection.nfts.filter(nft => 
-        nft.tokenId !== collectionId
-      );
-      
-      debug(`Selecting ${actualNFTs.length} NFTs in airdrop context (filtered from ${collection.nfts.length} total)`);
-      
-      // Also select all individual NFTs in the collection in airdrop context
-      actualNFTs.forEach(nft => {
-        selectNFT(nft.tokenId);
+      debug(`Found collection with ${collection.nfts.length} NFTs:`, {
+        collectionId,
+        name: collection.name,
+        nfts: collection.nfts.map(nft => ({ id: nft.tokenId, name: nft.name }))
       });
+      
+      // SKIP collection selection - only select individual NFTs
+      // This ensures we don't have the collection vs individual NFT conflict
+      
+      // Create individual distributions for each NFT in the collection
+      collection.nfts.forEach(nft => {
+        if (nft.tokenId !== collectionId) { // Skip collection token itself
+          debug(`Explicitly selecting NFT: ${nft.name} (${nft.tokenId})`);
+          selectNFT(nft.tokenId, collectionId);
+        }
+      });
+    } else {
+      debug(`Collection not found: ${collectionId}`);
     }
     
     flushLogs();
@@ -374,8 +379,7 @@ export function WalletAssets() {
                   className={`overflow-hidden ${isCollectionSelected(collection.id) ? 'border-deepsea-bright' : ''}`}
                 >
                   <div 
-                    className="px-4 py-3 cursor-pointer border-b border-gray-700 flex justify-between items-center"
-                    onClick={() => handleCollectionSelection(collection.id)}
+                    className="px-4 py-3 border-b border-gray-700 flex justify-between items-center"
                   >
                     <div>
                       <h4 className="text-lg font-pixel text-deepsea-bright">{collection.name}</h4>
@@ -383,43 +387,52 @@ export function WalletAssets() {
                         {collection.nfts.length} NFTs in this collection
                       </p>
                     </div>
-                    <PixelatedButton
-                      className="ml-2 text-xs py-1 px-3"
-                      onClick={(e) => handleSelectAllNFTs(collection.id, e)}
-                    >
-                      Select All
-                    </PixelatedButton>
+                    <div className="flex gap-2">
+                      <PixelatedButton
+                        className="text-xs py-1 px-3"
+                        onClick={(e) => handleSelectAllNFTs(collection.id, e)}
+                      >
+                        Select All
+                      </PixelatedButton>
+                    </div>
                   </div>
-                  <div className="p-2">
-                    <div className="space-y-2">
-                      {collection.nfts.map((nft, index) => (
-                        <div key={`nft-${nft.tokenId}-${index}`} onClick={() => handleNFTSelection(nft.tokenId)}>
-                          <PixelatedContainer 
-                            className={`flex items-center justify-between p-3 cursor-pointer ${isNFTSelected(nft.tokenId) ? 'border-deepsea-bright' : ''}`}
-                          >
-                            <div className="flex items-center space-x-2 truncate">
-                              <div className="min-w-8 h-8 rounded-full bg-deepsea-bright/20 flex items-center justify-center text-xs font-bold">
-                                {nft.name.substring(0, 2).toUpperCase()}
-                              </div>
-                              <div className="truncate">
-                                <div className="font-medium text-white">{nft.name}</div>
-                                <div className="text-sm text-gray-400 truncate">
-                                  {collection.name} • ID: {nft.tokenId.substring(0, 8)}...
+                  <div className="p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {(() => {
+                        debug('Collection NFTs:', collection.nfts);
+                        return collection.nfts
+                          .map((nft, index) => {
+                            debug('Processing NFT:', nft);
+                            return (
+                              <PixelatedContainer 
+                                key={`nft-${nft.tokenId}`}
+                                className={`p-4 ${isNFTSelected(nft.tokenId) ? 'border-deepsea-bright' : 'border-gray-700'}`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="min-w-10 h-10 rounded-full bg-deepsea-bright/20 flex items-center justify-center text-sm font-bold">
+                                      {nft.name ? nft.name.substring(0, 2).toUpperCase() : 'NFT'}
+                                    </div>
+                                    <div>
+                                      <div className="font-medium text-white text-lg">
+                                        {nft.name || `${collection.name} #${index + 1}`}
+                                      </div>
+                                      <div className="text-sm text-gray-400">
+                                        ID: {nft.tokenId.substring(0, 8)}...
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <PixelatedButton
+                                    className={`text-sm py-2 px-4 ${isNFTSelected(nft.tokenId) ? 'bg-deepsea-bright' : 'bg-gray-700'}`}
+                                    onClick={() => handleNFTSelection(nft.tokenId, collection.id)}
+                                  >
+                                    {isNFTSelected(nft.tokenId) ? 'Selected' : 'Select'}
+                                  </PixelatedButton>
                                 </div>
-                              </div>
-                            </div>
-                            <PixelatedButton
-                              className={`ml-2 text-xs py-1 px-3 ${isNFTSelected(nft.tokenId) ? 'bg-deepsea-bright' : 'bg-gray-700'}`}
-                              onClick={(e) => {
-                                e.stopPropagation(); // Prevent parent onClick from firing
-                                handleNFTSelection(nft.tokenId);
-                              }}
-                            >
-                              {isNFTSelected(nft.tokenId) ? 'Selected' : 'Select'}
-                            </PixelatedButton>
-                          </PixelatedContainer>
-                        </div>
-                      ))}
+                              </PixelatedContainer>
+                            );
+                          })
+                      })()}
                     </div>
                   </div>
                 </PixelatedContainer>

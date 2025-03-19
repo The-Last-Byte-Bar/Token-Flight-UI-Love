@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { CollectionService } from '@/services/CollectionService';
 import { createDebugLogger, flushLogs } from '@/hooks/useDebugLog';
 import { isValidErgoAddress, isValidAmount, isValidTokenId } from '@/lib/validation';
+import { ensureWalletConnected } from '@/lib/wallet';
 import {
   handleSelectToken,
   handleUnselectToken,
@@ -26,7 +27,8 @@ import {
   handleSelectNFT,
   handleUnselectNFT,
   handleSetNFTDistributionType,
-  handleSetNFTAmount
+  handleSetNFTAmount,
+  updateNFTDistributionMappings
 } from './nftHandlers';
 import {
   handleAddRecipient,
@@ -34,7 +36,7 @@ import {
   handleImportRecipients,
   handleImportRecipientsFromApi
 } from './recipientHandlers';
-import { buildTokenTransferTx, signAndSubmitTx } from '@/lib/transactions';
+import { buildTokenTransferTx, signAndSubmitTx, buildBatchTransferTx, formatInsufficientInputsError } from '@/lib/transactions';
 
 // Use a type alias to avoid conflicts
 type Token = TokenType;
@@ -124,10 +126,18 @@ export function useAirdropState() {
   }, [nftDistributions]);
 
   // Token selection handlers
-  const selectToken = useCallback((tokenId: string) => {
+  const selectToken = useCallback(async (tokenId: string) => {
     debug(`Selecting token: ${tokenId}`);
-    const updatedDistributions = handleSelectToken(tokens, tokenDistributions, setTokenDistributions, tokenId);
-    debug(`After selection, token distributions count: ${updatedDistributions?.length || tokenDistributions.length}`);
+    setLoading(true);
+    try {
+      const updatedDistributions = await handleSelectToken(tokens, tokenDistributions, setTokenDistributions, tokenId);
+      debug(`After selection, token distributions count: ${updatedDistributions?.length || tokenDistributions.length}`);
+    } catch (error) {
+      console.error(`Error selecting token ${tokenId}:`, error);
+      toast.error(`Failed to select token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
     flushLogs();
   }, [tokens, tokenDistributions]);
 
@@ -155,8 +165,8 @@ export function useAirdropState() {
     handleUnselectCollection(setNFTDistributions, collectionId);
   }, []);
 
-  const selectNFT = useCallback((nftId: string) => {
-    handleSelectNFT(collections, nftDistributions, setNFTDistributions, nftId);
+  const selectNFT = useCallback((nftId: string, collectionId?: string) => {
+    handleSelectNFT(collections, nftDistributions, setNFTDistributions, nftId, collectionId);
   }, [collections, nftDistributions]);
 
   const unselectNFT = useCallback((nftId: string) => {
@@ -239,419 +249,141 @@ export function useAirdropState() {
    * Execute an airdrop transaction
    */
   const executeAirdrop = async () => {
+    if (!wallet.connected) {
+      toast.error('Wallet not connected');
+      return null;
+    }
+
     try {
-      // Set airdrop status
-      setStatus({
-        status: 'executing',
-        message: 'Preparing to execute airdrop transactions...'
-      });
-      
-      // Make sure the wallet is connected
-      const wallet = await ensureWalletConnected();
-      if (!wallet.connected || !wallet.addresses || wallet.addresses.length === 0) {
-        setError('Wallet is not connected. Please connect your wallet and try again.');
-        setStatus({
-          status: 'error',
-          message: 'Wallet connection failed. Please connect your wallet and try again.'
-        });
-        return;
-      }
-      
-      // Log details for debugging
-      console.log('[AirdropState] Starting airdrop execution', {
-        tokens: tokenDistributions.length,
-        nfts: nftDistributions.length,
-        recipients: recipients.length
-      });
-      
-      // Check for common issues before execution
-      if (recipients.length === 0) {
-        setError('No recipients provided. Please add at least one recipient.');
-        return;
-      }
-      
-      // Verify recipient addresses are valid
-      for (const recipient of recipients) {
-        if (!recipient.address || !recipient.address.match(/^[a-zA-Z0-9]{50,60}$/)) {
-          setError(`Invalid recipient address: ${recipient.address || 'empty'}`);
-          return;
-        }
-      }
-      
-      // More comprehensive wallet state verification
-      try {
-        const currentHeight = await window.ergo?.get_current_height();
-        if (!currentHeight) {
-          setError('Unable to get current blockchain height. Please ensure your wallet is properly synced with the blockchain.');
-          return;
-        }
-        console.log(`[AirdropState] Confirmed wallet is connected to blockchain. Current height: ${currentHeight}`);
-      } catch (walletError) {
-        console.error('[AirdropState] Wallet health check failed:', walletError);
-        setError('Wallet health check failed. Please ensure your wallet is unlocked and connected to a healthy Ergo node.');
-        return;
-      }
-      
-      // Validate all recipient addresses
-      const invalidAddresses = recipients.filter(r => !r.address || !isValidErgoAddress(r.address));
-      if (invalidAddresses.length > 0) {
-        toast.error(`${invalidAddresses.length} invalid recipient addresses found. Please check and try again.`);
-        console.error('Invalid recipient addresses:', invalidAddresses);
-        return;
-      }
-
-      // Validate token distributions
-      if (tokenDistributions.length === 0 && nftDistributions.length === 0) {
-        toast.error('Please select at least one token or NFT to distribute');
-        return;
-      }
-      
-      // Validate token distribution amounts
-      const invalidTokenDistributions = tokenDistributions.filter(dist => 
-        !dist.amount || !isValidAmount(Number(dist.amount)) || Number(dist.amount) <= 0
-      );
-      
-      if (invalidTokenDistributions.length > 0) {
-        toast.error(`${invalidTokenDistributions.length} token distributions have invalid amounts. Please check and try again.`);
-        console.error('Invalid token distributions:', invalidTokenDistributions);
-        return;
-      }
-
-      setTxError(null);
       setExecuting(true);
-      setTxHash('');
-
-      try {
-        debug('Starting airdrop execution', {
-          tokens: tokenDistributions.length,
-          nfts: nftDistributions.length,
-          recipients: recipients.length
-        });
-
-        // Process token distributions if any exist
-        if (tokenDistributions.length > 0) {
-          for (const distribution of tokenDistributions) {
-            const { token, amount, type } = distribution;
-            
-            debug(`Processing token distribution for ${token.name}`);
-            
-            // Generate recipients based on distribution type
-            const recipientAddresses = recipients.map(r => r.address);
-            let tokenAmounts = [];
-            
-            switch (type) {
-              case 'random':
-                // Random distribution while maintaining total amount
-                tokenAmounts = distributeRandomly(amount, recipients.length);
-                break;
-                
-              case 'total':
-                // Total amount divided evenly among recipients
-                const amountPerRecipient = amount / recipients.length;
-                tokenAmounts = recipients.map(() => amountPerRecipient);
-                break;
-                
-              case 'per-user':
-                // Each recipient gets the specified amount
-                tokenAmounts = recipients.map(() => amount);
-                break;
-                
-              default:
-                // If any older types are still in the data, convert to 'per-user' as default
-                console.log(`Converting unknown distribution type '${type}' to 'per-user'`);
-                tokenAmounts = recipients.map(() => amount);
-                break;
-            }
-            
-            console.log(`[AirdropState] Building transaction for ${token.name} distribution (${type})`);
-            console.log(`[AirdropState] Will distribute to ${recipientAddresses.length} recipients`);
-            
-            // Prepare recipient objects with amounts - ENHANCED VALIDATION
-            const recipientsWithAmounts = recipientAddresses.map((address, index) => {
-              // Ensure the amount is a valid number first
-              const calculatedAmount = tokenAmounts[index];
-              if (isNaN(Number(calculatedAmount))) {
-                throw new Error(`Invalid amount calculated for recipient ${index + 1}: ${calculatedAmount}`);
-              }
-              
-              // Floor the numeric amount to ensure it's an integer
-              const numericAmount = Math.floor(Number(calculatedAmount));
-              
-              // Validate the amount after flooring
-              if (numericAmount <= 0) {
-                console.warn(`[AirdropState] Recipient ${index + 1} would receive 0 tokens due to rounding.`);
-              }
-              
-              // CRITICAL FIX: Explicitly convert to integer string (no decimals)
-              // This is needed because the Fleet SDK's BigInt conversion requires integer strings
-              const amountStr = numericAmount.toString();
-              console.log(`[AirdropState] Prepared recipient ${index + 1}:`, {
-                address: address.substring(0, 15) + '...',
-                originalAmount: calculatedAmount,
-                floored: numericAmount,
-                finalAmountStr: amountStr
-              });
-              
-              // Return the recipient with the amount as a string
-              return {
-                address,
-                amount: amountStr 
-              };
-            });
-            
-            // Validate that no amount is zero after flooring
-            const zeroAmountRecipients = recipientsWithAmounts.filter(r => r.amount === '0' || r.amount === '0.0');
-            if (zeroAmountRecipients.length > 0) {
-              console.warn(`[AirdropState] ${zeroAmountRecipients.length} recipients would receive 0 tokens due to rounding. Consider increasing the total amount.`);
-              
-              if (zeroAmountRecipients.length === recipientsWithAmounts.length) {
-                toast.error('All recipients would receive 0 tokens due to rounding. Please increase the amount.');
-                throw new Error('All distribution amounts rounded to zero. Please increase the total amount to distribute.');
-              }
-              
-              // If not all are zero, we can proceed but warn the user
-              toast.warning(`${zeroAmountRecipients.length} recipients will not receive tokens due to rounding.`);
-            }
-            
-            // Add detailed logging for token distribution
-            console.log('Token distribution details:', {
-              tokenId: token.tokenId,
-              tokenName: token.name,
-              recipientCount: recipientsWithAmounts.length,
-              distributionType: type,
-              totalAmount: tokenAmounts.reduce((a, b) => a + b, 0),
-              firstFewRecipients: recipientsWithAmounts.slice(0, 3).map(r => ({
-                address: r.address.substring(0, 10) + '...',
-                amount: r.amount,
-                amountType: typeof r.amount
-              }))
-            });
-            
-            try {
-              // Log the first recipient for debugging
-              if (recipientsWithAmounts.length > 0) {
-                console.log('First recipient details:', {
-                  address: recipientsWithAmounts[0].address.substring(0, 15) + '...',
-                  amount: recipientsWithAmounts[0].amount,
-                  amountType: typeof recipientsWithAmounts[0].amount,
-                  amountNumeric: !isNaN(Number(recipientsWithAmounts[0].amount))
-                });
-              }
-              
-              // Build token transaction using Fleet SDK
-              const unsignedTx = await buildTokenTransferTx(
-                wallet,
-                recipientsWithAmounts,
-                token.tokenId,
-                "1000000" // 0.001 ERG fee
-              );
-              
-              console.log('[AirdropState] Transaction built successfully, signing and submitting');
-              
-              // Sign and submit transaction
-              const txHash = await signAndSubmitTx(unsignedTx);
-              setTxHash(txHash);
-              
-              toast.success(`Airdrop executed successfully! Transaction ID: ${txHash}`);
-              return;
-            } catch (error) {
-              console.error(`[AirdropState] Error building token transaction:`, error);
-              throw error;
-            }
-          }
-        } else {
-          // Log a warning about no token distributions found
-          console.warn('NO TOKEN DISTRIBUTIONS FOUND!');
-        }
-        
-        // Process NFT distributions if any exist
-        if (nftDistributions.length > 0) {
-          console.log(`[AirdropState] Processing ${nftDistributions.length} NFT distributions`);
+      setStatus({ status: 'processing', message: 'Preparing airdrop transaction...' });
+      
+      // Log wallet balance before transaction
+      console.log('Executing airdrop with wallet:', wallet);
+      
+      // Calculate and log total tokens to be distributed
+      const tokenTotals = new Map();
+      tokenDistributions.forEach(dist => {
+        const { token, type, amount } = dist;
+        const totalAmount = type === "total" 
+          ? amount 
+          : amount * recipients.length;
           
-          for (const distribution of nftDistributions) {
-            const { collection, nft, type, amount = 1 } = distribution;
-            const nftName = collection ? collection.name : nft?.name || 'Unknown NFT';
-            
-            debug(`Processing NFT distribution for ${nftName}`);
-            
-            // Get the NFT IDs to distribute
-            let nftIds: string[] = [];
-            
-            if (collection) {
-              // Distribute all NFTs in the collection
-              nftIds = collection.nfts.map(nft => nft.tokenId);
-            } else if (nft) {
-              // Distribute a single NFT
-              nftIds = [nft.tokenId];
-            }
-            
-            if (nftIds.length === 0) {
-              debug('No NFTs found in distribution, skipping');
-              continue;
-            }
-            
-            debug(`Found ${nftIds.length} NFTs to distribute with type ${type}`);
-            
-            // Generate recipients based on distribution type
-            const recipientAddresses = recipients.map(r => r.address);
-            
-            // For NFTs we need to determine how to distribute them based on type
-            switch (type) {
-              case 'random':
-                // Random distribution - shuffle NFTs and assign to recipients
-                try {
-                  console.log(`[AirdropState] Building transaction for ${nftName} distribution (random)`);
-                  
-                  // Shuffle the NFT IDs to randomize distribution
-                  const shuffledNFTs = [...nftIds].sort(() => Math.random() - 0.5);
-                  
-                  // Pair NFTs with recipients (may result in some recipients getting more NFTs than others)
-                  const distributions = [];
-                  
-                  for (let i = 0; i < shuffledNFTs.length; i++) {
-                    // Use modulo to cycle through recipients if we have more NFTs than recipients
-                    const recipientIndex = i % recipientAddresses.length;
-                    distributions.push({
-                      address: recipientAddresses[recipientIndex],
-                      tokenId: shuffledNFTs[i],
-                      amount: "1" // NFTs typically have amount=1
-                    });
-                  }
-                  
-                  // Build transaction for batch NFT transfer
-                  // This would need to be implemented in transactions.js
-                  console.log('[AirdropState] Random NFT distribution prepared', distributions);
-                  toast.info(`Ready to distribute ${distributions.length} NFTs to ${recipientAddresses.length} recipients`);
-                  
-                  // TODO: Implement the actual transaction building
-                  // const unsignedTx = await buildNFTBatchTransferTx(wallet, distributions);
-                  // const txHash = await signAndSubmitTx(unsignedTx);
-                  // setTxHash(txHash);
-                  
-                  toast.warning('NFT random distribution is ready but transaction building not yet implemented');
-                  return;
-                } catch (error) {
-                  console.error(`[AirdropState] Error building NFT transaction:`, error);
-                  throw error;
-                }
-                break;
-                
-              case 'total':
-                // Total distribution - each recipient gets an equal share of NFTs
-                try {
-                  console.log(`[AirdropState] Building transaction for ${nftName} distribution (total)`);
-                  
-                  // Calculate how many NFTs each recipient should get (may not be equal if not divisible)
-                  const nftsPerRecipient = Math.floor(nftIds.length / recipientAddresses.length);
-                  let remainingNFTs = nftIds.length % recipientAddresses.length;
-                  
-                  // Distribution array to track which NFT goes to which recipient
-                  const distributions = [];
-                  let nftIndex = 0;
-                  
-                  for (let i = 0; i < recipientAddresses.length; i++) {
-                    // Calculate how many NFTs this recipient gets (add one if we have remaining NFTs)
-                    const countForThisRecipient = nftsPerRecipient + (remainingNFTs > 0 ? 1 : 0);
-                    if (remainingNFTs > 0) remainingNFTs--;
-                    
-                    // Add NFTs for this recipient
-                    for (let j = 0; j < countForThisRecipient && nftIndex < nftIds.length; j++) {
-                      distributions.push({
-                        address: recipientAddresses[i],
-                        tokenId: nftIds[nftIndex],
-                        amount: "1" // NFTs typically have amount=1
-                      });
-                      nftIndex++;
-                    }
-                  }
-                  
-                  console.log('[AirdropState] Total NFT distribution prepared', distributions);
-                  toast.info(`Ready to distribute ${distributions.length} NFTs to ${recipientAddresses.length} recipients`);
-                  
-                  // TODO: Implement the actual transaction building
-                  // const unsignedTx = await buildNFTBatchTransferTx(wallet, distributions);
-                  // const txHash = await signAndSubmitTx(unsignedTx);
-                  // setTxHash(txHash);
-                  
-                  toast.warning('NFT total distribution is ready but transaction building not yet implemented');
-                  return;
-                } catch (error) {
-                  console.error(`[AirdropState] Error building NFT transaction:`, error);
-                  throw error;
-                }
-                break;
+        console.log(`Token distribution - ${token.name}:`, {
+          tokenId: token.tokenId,
+          type,
+          amountPerType: amount,
+          totalAmount,
+          recipientCount: recipients.length
+        });
+        
+        const currentAmount = tokenTotals.get(token.tokenId) || 0;
+        tokenTotals.set(token.tokenId, currentAmount + totalAmount);
+      });
+      
+      console.log('Total tokens to be distributed:', 
+        Array.from(tokenTotals.entries()).map(([tokenId, amount]) => ({
+          tokenId,
+          amount,
+          token: tokenDistributions.find(d => d.token.tokenId === tokenId)?.token?.name || 'Unknown'
+        }))
+      );
 
-              case 'per-user':
-                // Per user - each recipient gets the specified NFT(s)
-                try {
-                  console.log(`[AirdropState] Building transaction for ${nftName} distribution (per-user)`);
-                  
-                  // Check if we have enough NFTs for all recipients
-                  if (nftIds.length < recipientAddresses.length && amount >= 1) {
-                    toast.error(`Not enough NFTs (${nftIds.length}) for all recipients (${recipientAddresses.length})`);
-                    return;
-                  }
-                  
-                  // Create a distribution for each recipient
-                  const distributions = [];
-                  
-                  for (let i = 0; i < recipientAddresses.length; i++) {
-                    // If we're sending each recipient a specific NFT
-                    if (amount >= 1 && i < nftIds.length) {
-                      distributions.push({
-                        address: recipientAddresses[i],
-                        tokenId: nftIds[i],  
-                        amount: "1" // NFTs typically have amount=1
-                      });
-                    }
-                    // If we're duplicating the same NFT to all recipients (useful for badges)
-                    else if (nftIds.length === 1) {
-                      distributions.push({
-                        address: recipientAddresses[i],
-                        tokenId: nftIds[0],
-                        amount: amount.toString() // Convert to string for consistency
-                      });
-                    }
-                  }
-                  
-                  console.log('[AirdropState] Per-user NFT distribution prepared', distributions);
-                  toast.info(`Ready to distribute NFTs to ${recipientAddresses.length} recipients`);
-                  
-                  // TODO: Implement the actual transaction building
-                  // const unsignedTx = await buildNFTBatchTransferTx(wallet, distributions);
-                  // const txHash = await signAndSubmitTx(unsignedTx);
-                  // setTxHash(txHash);
-                  
-                  toast.warning('NFT per-user distribution is ready but transaction building not yet implemented');
-                  return;
-                } catch (error) {
-                  console.error(`[AirdropState] Error building NFT transaction:`, error);
-                  throw error;
-                }
-                break;
-                
-              default:
-                console.log(`[AirdropState] Unknown NFT distribution type: ${type}`);
-                toast.error(`Unsupported NFT distribution type: ${type}`);
-                return;
-            }
+      // Create distributions array for transaction
+      const distributions = recipients.map(recipient => {
+        const tokens: { tokenId: string; amount: string | number | bigint; decimals: number }[] = [];
+        const nfts: { tokenId: string }[] = [];
+
+        // Add token distributions
+        for (const tokenDist of tokenDistributions) {
+          const { token, type, amount } = tokenDist;
+          // For total distribution, we need to divide the raw amount by recipients
+          // For per-user, we use the raw amount directly
+          const rawAmount = type === "total" 
+            ? Math.floor(amount / recipients.length)  // Divide raw amount by recipients
+            : amount;  // Use raw amount directly for per-user
+          
+          // For Pumperino token specifically (ID: 7c788b124df40d5ab4d4c428dd7a1290b5b8579da4e8cbddeea060b1671312da),
+          // override the decimals to 3 as confirmed by the blockchain API
+          const correctDecimals = token.tokenId === '7c788b124df40d5ab4d4c428dd7a1290b5b8579da4e8cbddeea060b1671312da'
+            ? 3 // Force 3 decimals for Pumperino
+            : token.decimals;
+          
+          console.log(`Calculating for recipient ${recipient.address.substring(0, 8)}... - ${token.name}:`, {
+            tokenId: token.tokenId,
+            originalAmount: amount,
+            calculatedAmount: rawAmount,
+            type,
+            decimalsInMetadata: token.decimals,
+            decimalsUsed: correctDecimals,
+            displayAmount: rawAmount / Math.pow(10, correctDecimals) // Convert raw to display for logging
+          });
+          
+          console.log(`Raw amount for ${token.name}:`, {
+            rawAmount,
+            displayAmount: rawAmount / Math.pow(10, correctDecimals), // Convert raw to display for logging
+            decimals: correctDecimals
+          });
+          
+          tokens.push({
+            tokenId: token.tokenId,
+            amount: rawAmount,
+            decimals: correctDecimals // Use the corrected decimals value
+          });
+        }
+
+        // Add NFT distributions
+        for (const nftDist of nftDistributions) {
+          const { amount, isRandom } = nftDist;
+          
+          // Get the NFTs to distribute
+          const nftsToDistribute = nftDist.nft 
+            ? [nftDist.nft]
+            : nftDist.collection?.nfts.filter(n => n.tokenId !== nftDist.collection?.id) || [];
+          
+          if (nftsToDistribute.length === 0) continue;
+          
+          // Calculate total NFTs to distribute per recipient
+          const totalNFTsPerRecipient = amount * nftsToDistribute.length;
+          
+          if (isRandom) {
+            // For random distribution, we'll handle this in the transaction builder
+            // Just add the NFTs to the list
+            nftsToDistribute.forEach(nft => {
+              nfts.push({ tokenId: nft.tokenId });
+            });
+          } else {
+            // For sequential distribution, add the specified amount of each NFT
+            nftsToDistribute.forEach(nft => {
+              nfts.push({ tokenId: nft.tokenId });
+            });
           }
         }
-        
-        toast.error('No distributions configured!');
-      } catch (error) {
-        console.error('Airdrop execution error:', error);
-        setTxError(error instanceof Error ? error.message : 'Unknown error');
-        debug('Airdrop execution failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
-        toast.error(`Failed to execute airdrop: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      } finally {
-        setExecuting(false);
-      }
+
+        return {
+          address: recipient.address,
+          tokens,
+          nfts
+        };
+      });
+
+      // Build and submit the transaction
+      const unsignedTx = await buildBatchTransferTx(wallet, distributions);
+      const txId = await signAndSubmitTx(unsignedTx);
+      
+      setTxHash(txId);
+      setStatus({ status: 'success', message: 'Transaction submitted successfully' });
+      
+      return txId;
     } catch (error) {
-      console.error('Airdrop execution error:', error);
-      setTxError(error instanceof Error ? error.message : 'Unknown error');
-      debug('Airdrop execution failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
-      toast.error(`Failed to execute airdrop: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('[AirdropContext] Error executing airdrop:', error);
+      const errorMessage = formatInsufficientInputsError(error);
+      setTxError(errorMessage);
+      setStatus({ status: 'error', message: 'Failed to execute airdrop' });
+      toast.error(errorMessage);
+      return null;
+    } finally {
+      setExecuting(false);
     }
   };
 
@@ -663,6 +395,30 @@ export function useAirdropState() {
     });
     flushLogs();
   }, [tokenDistributions]);
+
+  // Update NFT distribution mappings when recipients change
+  useEffect(() => {
+    if (recipients.length > 0 && nftDistributions.length > 0) {
+      debug('Recipients changed, updating NFT distribution mappings');
+      updateNFTDistributionMappings(nftDistributions, setNFTDistributions, recipients);
+    }
+  }, [recipients]);
+
+  const setNFTRandomDistribution = useCallback((entityId: string, isRandom: boolean) => {
+    debug(`Setting random distribution for ${entityId} to ${isRandom}`);
+    setNFTDistributions(prev => 
+      prev.map(distribution => {
+        if (
+          (distribution.nft?.tokenId === entityId) || 
+          (distribution.collection?.id === entityId && !distribution.nft)
+        ) {
+          return { ...distribution, isRandom };
+        }
+        return distribution;
+      })
+    );
+    flushLogs();
+  }, []);
 
   return {
     // State
@@ -693,6 +449,7 @@ export function useAirdropState() {
     setNFTDistributions,
     setNFTDistributionType,
     setNFTAmountForDistribution,
+    setNFTRandomDistribution,
     
     // Recipient handlers
     addRecipient,

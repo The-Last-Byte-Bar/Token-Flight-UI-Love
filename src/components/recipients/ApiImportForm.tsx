@@ -39,10 +39,11 @@ const ApiImportForm = () => {
     try {
       console.log('Attempting to import Sigmanauts miners...');
       
-      // Use our direct proxy endpoint 
+      // Use our proxy endpoint with proper query parameter handling
       const success = await importRecipientsFromApi(
         '/api/sigmanauts-proxy', 
-        'address'
+        'address',
+        true // isSigmanauts flag
       );
       
       if (success) {

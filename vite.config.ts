@@ -10,15 +10,20 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     proxy: {
       '/api/sigmanauts-proxy': {
-        target: 'http://5.78.102.130:8000/sigscore/miners/bonus',
+        target: 'http://5.78.102.130:8000',
         changeOrigin: true,
-        rewrite: () => '',
+        rewrite: (path) => path.replace('/api/sigmanauts-proxy', '/sigscore/miners'),
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
             console.log('proxy error', err);
           });
           proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('Sending Request to the Target:', req.method, req.url);
+            const url = req.url || '';
+            if (url.includes('?')) {
+              const queryString = url.split('?')[1];
+              proxyReq.path = `${proxyReq.path}?${queryString}`;
+            }
+            console.log('Sending Request to the Target:', req.method, proxyReq.path);
           });
           proxy.on('proxyRes', (proxyRes, req, _res) => {
             console.log('Received Response from the Target:', proxyRes.statusCode, req.url);

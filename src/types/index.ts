@@ -1,7 +1,7 @@
 export interface Token {
   tokenId: string;
   name: string;
-  amount: number;
+  amount: bigint;
   decimals: number;
   description?: string;
   icon?: string;
@@ -9,12 +9,16 @@ export interface Token {
 
 export interface NFT {
   tokenId: string;
+  id?: string;  // For backward compatibility
   name: string;
-  description?: string;
-  imageUrl: string;
-  collectionId?: string;
-  selected: boolean;
-  type?: 'picture' | 'audio' | 'video' | 'other';
+  selected?: boolean;
+  canDistribute?: boolean;  // Whether this NFT can be distributed
+}
+
+export interface NFTCollection {
+  id: string;
+  name: string;
+  nfts: NFT[];
 }
 
 export interface Collection {
@@ -31,9 +35,9 @@ export interface Recipient {
   name?: string;
 }
 
-export type TokenDistributionType = 'total' | 'per-user' | 'random';
+export type TokenDistributionType = 'total' | 'per-user';
 
-export type NFTDistributionType = 'random' | 'total' | 'per-user';
+export type NFTDistributionType = 'random' | 'total' | '1-to-1' | 'set';
 
 export interface TokenDistribution {
   token: Token;
@@ -42,17 +46,19 @@ export interface TokenDistribution {
 }
 
 export interface NFTDistribution {
-  collection?: Collection;
-  nft?: NFT;
   type: NFTDistributionType;
-  amount?: number;
-  mapping?: Record<string, string>; // For 1-to-1 mapping: NFT ID -> Recipient ID
+  collection?: NFTCollection;
+  nft?: NFT;
+  mapping?: Record<string, string>; // NFT ID to recipient ID mapping
+  nftMapping?: Array<{ tokenId: string; name: string; selected: boolean }>; // Array of NFTs with their selection state
+  amount: number; // Amount of NFTs to distribute per recipient
+  isRandom: boolean; // Whether to distribute NFTs randomly
 }
 
 export interface AirdropConfig {
+  recipients: Recipient[];
   tokenDistributions: TokenDistribution[];
   nftDistributions: NFTDistribution[];
-  recipients: Recipient[];
 }
 
 export interface WalletInfo {

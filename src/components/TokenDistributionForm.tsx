@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TokenDistribution, TokenDistributionType } from '@/types';
+import { TokenDistribution, TokenDistributionType } from '@/types/index';
 import PixelatedButton from './PixelatedButton';
 import { useAirdrop } from '@/context/AirdropContext';
 import { createDebugLogger } from '@/hooks/useDebugLog';
@@ -12,31 +12,105 @@ interface TokenDistributionFormProps {
 
 export default function TokenDistributionForm({ distribution }: TokenDistributionFormProps) {
   const { setTokenDistributionType, setTokenAmount } = useAirdrop();
-  const [amount, setAmount] = useState(distribution.amount);
+  const [inputValue, setInputValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  // Debug and log full distribution details on mount
+  // Initialize input value when distribution changes
   useEffect(() => {
-    debug('Distribution initialized:', {
-      token: distribution?.token?.name || 'Unknown token',
-      id: distribution?.token?.id || 'Unknown ID',
-      amount: distribution?.amount || 0,
-      type: distribution?.type || 'unknown type'
-    });
-    if (distribution?.amount) {
-      setAmount(distribution.amount);
+    if (distribution?.amount && distribution?.token?.decimals) {
+      // Convert raw amount back to decimal for display
+      const decimalAmount = Number(distribution.amount) / Math.pow(10, distribution.token.decimals);
+      debug(`Converting raw amount to display amount for ${distribution.token.name}:`, {
+        rawAmount: distribution.amount,
+        decimals: distribution.token.decimals,
+        decimalAmount
+      });
+      setInputValue(decimalAmount.toString());
     }
   }, [distribution]);
 
-  const handleAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseFloat(e.target.value);
-    if (!isNaN(value)) {
-      setAmount(value);
-      debug(`Updating amount for ${distribution?.token?.name || 'Unknown token'} to ${value}`);
-      if (distribution?.token?.tokenId) {
-        setTokenAmount(distribution.token.tokenId, value);
-      }
+  const validateAmount = useCallback((value: number) => {
+    const decimals = distribution.token.decimals || 0;
+    
+    // For tokens with no decimals, ensure whole numbers
+    if (decimals === 0 && !Number.isInteger(value)) {
+      return `${distribution.token.name} cannot be divided into decimals`;
     }
-  }, [distribution, setTokenAmount]);
+
+    // Check if amount is too small
+    if (value <= 0) {
+      return `Amount must be greater than 0`;
+    }
+
+    // Convert display value to raw value for comparison
+    const rawValue = Math.floor(value * Math.pow(10, decimals));
+    const availableRawBalance = BigInt(distribution.token.amount);
+
+    debug(`Validating amount for ${distribution.token.name}:`, {
+      inputValue: value,
+      decimals,
+      rawValue,
+      availableRawBalance: availableRawBalance.toString()
+    });
+
+    // Compare raw values
+    if (BigInt(rawValue) > availableRawBalance) {
+      const availableDisplay = Number(availableRawBalance) / Math.pow(10, decimals);
+      return `Amount exceeds available balance of ${availableDisplay} ${distribution.token.name}`;
+    }
+
+    return null;
+  }, [distribution]);
+
+  const handleAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setInputValue(newValue);
+
+    // Clear previous error
+    setError(null);
+
+    // Allow empty input for user to type new values
+    if (!newValue) {
+      return;
+    }
+
+    // Parse the input value as is (this is the decimal amount the user sees)
+    const parsedValue = parseFloat(newValue);
+    if (isNaN(parsedValue)) {
+      setError('Please enter a valid number');
+      return;
+    }
+
+    // Validate the amount (using decimal values)
+    const validationError = validateAmount(parsedValue);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    // Convert to raw amount for storage
+    if (distribution?.token?.tokenId) {
+      const decimals = distribution.token.decimals || 0;
+      const rawAmount = Math.floor(parsedValue * Math.pow(10, decimals));
+      
+      debug(`Converting display amount to raw amount for ${distribution.token.name}:`, {
+        displayAmount: parsedValue,
+        decimals,
+        rawAmount,
+        availableRaw: distribution.token.amount.toString(),
+        availableDisplay: Number(distribution.token.amount) / Math.pow(10, decimals)
+      });
+
+      // Double-check that the raw amount doesn't exceed available balance
+      if (BigInt(rawAmount) > BigInt(distribution.token.amount)) {
+        const availableDisplay = Number(distribution.token.amount) / Math.pow(10, decimals);
+        setError(`Amount exceeds available balance of ${availableDisplay} ${distribution.token.name}`);
+        return;
+      }
+      
+      setTokenAmount(distribution.token.tokenId, rawAmount);
+    }
+  }, [distribution, validateAmount, setTokenAmount]);
 
   const updateDistributionType = useCallback((type: TokenDistributionType) => {
     if (!distribution?.token?.tokenId) {
@@ -48,23 +122,19 @@ export default function TokenDistributionForm({ distribution }: TokenDistributio
     setTokenDistributionType(distribution.token.tokenId, type);
   }, [distribution, setTokenDistributionType]);
 
-  // Format token amount properly considering decimals
-  const formatTokenAmount = useCallback((amount: string | number, decimals: number = 0) => {
-    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-    
-    // Convert to human-readable format
-    const displayAmount = numAmount / Math.pow(10, decimals);
-    
-    // Return the number without trailing zeros if it's a whole number
-    if (displayAmount % 1 === 0) {
-      return displayAmount.toString();
+  // Format token amount for display (e.g., in available balance)
+  const formatTokenAmount = useCallback((amount: string | number | bigint, decimals: number = 0) => {
+    // Convert bigint or raw amount to decimal display value
+    let decimalAmount: number;
+    if (typeof amount === 'bigint') {
+      decimalAmount = Number(amount) / Math.pow(10, decimals);
+    } else if (typeof amount === 'string') {
+      decimalAmount = parseFloat(amount) / Math.pow(10, decimals);
+    } else {
+      decimalAmount = amount / Math.pow(10, decimals);
     }
     
-    // Otherwise format with appropriate decimals
-    return displayAmount.toLocaleString(undefined, { 
-      maximumFractionDigits: decimals,
-      minimumFractionDigits: 0
-    });
+    return decimalAmount.toString();
   }, []);
 
   // Guard against invalid distribution data
@@ -73,13 +143,20 @@ export default function TokenDistributionForm({ distribution }: TokenDistributio
     return null;
   }
 
+  const minAmount = distribution.token.decimals > 0 
+    ? 1 / Math.pow(10, distribution.token.decimals) 
+    : 1;
+
   return (
     <div className="border border-deepsea-medium bg-deepsea-dark/50 p-4">
       <div className="flex justify-between items-start mb-3">
         <div>
           <h3 className="font-bold">{distribution.token.name}</h3>
           <p className="text-sm text-deepsea-bright">
-            Available: {formatTokenAmount(distribution.token.amount, distribution.token.decimals || 0)}
+            Available: {formatTokenAmount(distribution.token.amount, distribution.token.decimals)}
+          </p>
+          <p className="text-xs text-gray-400">
+            Decimals: {distribution.token.decimals}
           </p>
         </div>
       </div>
@@ -108,17 +185,22 @@ export default function TokenDistributionForm({ distribution }: TokenDistributio
             {distribution.type === 'total' ? 'Total Amount' : 'Amount Per Recipient'}
           </label>
           <input
-            type="number"
-            className="w-full bg-deepsea-dark border border-deepsea-medium p-2 text-white"
-            value={amount}
+            type="text"
+            className={`w-full bg-deepsea-dark border ${error ? 'border-red-500' : 'border-deepsea-medium'} p-2 text-white`}
+            value={inputValue}
             onChange={handleAmountChange}
-            min={0}
-            step={distribution.token.decimals > 0 ? Math.pow(10, -distribution.token.decimals) : 1}
-            max={Number(distribution.token.amount) / Math.pow(10, distribution.token.decimals || 0)}
+            placeholder={`Enter amount (min: ${minAmount})`}
           />
-          <p className="text-xs text-gray-400 mt-1">
-            Enter amount in {distribution.token.name} units (not nano/raw units)
-          </p>
+          {error ? (
+            <p className="text-xs text-red-500 mt-1">{error}</p>
+          ) : (
+            <p className="text-xs text-gray-400 mt-1">
+              Enter amount in {distribution.token.name} units
+              {distribution.token.decimals > 0 
+                ? ` (${distribution.token.decimals} decimal places, e.g., 0.${"0".repeat(distribution.token.decimals-1)}1)` 
+                : ' (whole numbers only)'}
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -2,6 +2,9 @@ import React from 'react';
 import { Token } from '@/types';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
+import { createDebugLogger } from '@/hooks/useDebugLog';
+
+const debug = createDebugLogger('TokenCard');
 
 interface TokenCardProps {
   token: Token;
@@ -12,20 +15,39 @@ interface TokenCardProps {
 const formatTokenAmount = (token: Token): string => {
   if (!token.amount) return '0';
   
-  const amount = typeof token.amount === 'bigint' 
-    ? Number(token.amount) / Math.pow(10, token.decimals)
-    : token.amount / Math.pow(10, token.decimals);
-  
-  // Format the number based on its size
-  if (amount >= 1_000_000) {
-    return `${(amount / 1_000_000).toFixed(2)}M`;
-  } else if (amount >= 1_000) {
-    return `${(amount / 1_000).toFixed(2)}K`;
-  } else if (amount >= 1) {
-    return amount.toFixed(2);
-  } else {
-    // Small numbers shown with more precision
-    return amount.toFixed(Math.min(8, token.decimals));
+  try {
+    // Convert to string, handling bigint
+    const rawAmount = token.amount.toString();
+    
+    // Convert raw units to decimal format using BigInt to avoid floating point issues
+    const decimals = token.decimals || 0;
+    const divisor = BigInt(10 ** decimals);
+    const wholePart = BigInt(rawAmount) / divisor;
+    const fractionalPart = BigInt(rawAmount) % divisor;
+    
+    // Format the fractional part with leading zeros if needed
+    let fractionalStr = fractionalPart.toString().padStart(decimals, '0');
+    
+    // Remove trailing zeros from fractional part
+    fractionalStr = fractionalStr.replace(/0+$/, '');
+    
+    // Combine whole and fractional parts
+    const formattedAmount = fractionalStr 
+      ? `${wholePart}.${fractionalStr}`
+      : wholePart.toString();
+    
+    debug(`Formatting token ${token.name} (${token.tokenId}):`, {
+      rawAmount,
+      decimals,
+      wholePart: wholePart.toString(),
+      fractionalPart: fractionalPart.toString(),
+      formattedAmount
+    });
+    
+    return formattedAmount;
+  } catch (error) {
+    console.error('Error formatting token amount:', error);
+    return '0';
   }
 };
 
@@ -42,7 +64,7 @@ export function TokenCard({ token, selected, onClick }: TokenCardProps) {
         <div className="truncate">
           <div className="font-medium text-white">{token.name || token.tokenId.substring(0, 8)}</div>
           <div className="text-sm text-gray-400 truncate">
-            {formatTokenAmount(token)} units
+            {formatTokenAmount(token)}
           </div>
         </div>
       </div>

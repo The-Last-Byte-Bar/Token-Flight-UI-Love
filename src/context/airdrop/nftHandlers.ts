@@ -1,4 +1,4 @@
-import { Collection, NFT, NFTDistribution, NFTDistributionType } from '@/types/index';
+import { Collection, NFT, NFTDistribution, NFTDistributionType, Recipient } from '@/types/index';
 import { toast } from 'sonner';
 import { createDebugLogger } from '@/hooks/useDebugLog';
 
@@ -13,6 +13,14 @@ export const handleSelectCollection = (
   console.log(`[AirdropContext] Selecting collection: ${collectionId}`);
   debug(`Selecting collection: ${collectionId}`);
   
+  // Log available collections for debugging
+  debug(`Available collections:`, collections.map(c => ({
+    id: c.id,
+    name: c.name,
+    nftCount: c.nfts.length,
+    nfts: c.nfts.slice(0, 5).map(n => ({ id: n.tokenId, name: n.name })) // Just log a few for clarity
+  })));
+  
   const collection = collections.find(c => c.id === collectionId);
   if (!collection) {
     console.error(`[AirdropContext] Cannot select collection ${collectionId}: Not found`);
@@ -22,43 +30,82 @@ export const handleSelectCollection = (
     return;
   }
   
-  // Filter out the collection token itself (which has the same ID as the collection)
-  const nftsCount = collection.nfts.filter(nft => nft.tokenId !== collectionId).length;
+  debug(`Found collection ${collection.name} with ${collection.nfts.length} total NFTs`);
+  
+  // Get all NFTs in the collection, filtering out the collection token itself
+  const distributableNFTs = collection.nfts.filter(nft => {
+    const isValid = nft.tokenId !== collectionId;
+    if (!isValid) {
+      debug(`Filtering out collection token: ${nft.tokenId} from distributable NFTs`);
+    }
+    return isValid;
+  });
+  
+  const nftsCount = distributableNFTs.length;
+  
+  debug(`After filtering collection token, there are ${nftsCount} distributable NFTs:`, {
+    firstFewNfts: distributableNFTs.slice(0, 5).map(nft => ({ id: nft.tokenId, name: nft.name })),
+    totalNfts: nftsCount
+  });
   
   if (nftsCount === 0) {
-    debug(`Collection ${collection.name} has no valid NFTs to distribute`);
-    toast.warning('This collection contains no distributable NFTs');
+    debug(`Collection ${collection.name} has no NFTs to distribute`);
+    toast.warning('This collection contains no NFTs');
     return;
   }
   
-  debug(`Found collection: ${collection.name} with ${nftsCount} distributable NFTs`);
+  // Remove any existing distributions for this collection or its NFTs
+  const filteredDistributions = nftDistributions.filter(dist => 
+    dist.collection?.id !== collectionId && 
+    !distributableNFTs.some(nft => dist.nft?.tokenId === nft.tokenId)
+  );
   
-  if (nftDistributions.some(dist => dist.collection?.id === collectionId)) {
-    console.log(`[AirdropContext] Collection ${collectionId} already in distributions`);
-    debug(`Collection ${collectionId} already in distributions`);
-    return;
-  }
+  // Create initial mapping for 1-to-1 distribution
+  const mapping: Record<string, string> = {};
+  distributableNFTs.forEach((nft, index) => {
+    mapping[nft.tokenId] = `temp_${index}`;
+    debug(`Added NFT to mapping: ${nft.name} (${nft.tokenId})`);
+  });
   
-  const newDistribution = { 
-    collection,
-    type: 'random' as NFTDistributionType
+  // Make sure all NFTs are marked as selected
+  const selectedNFTs = distributableNFTs.map(nft => ({
+    tokenId: nft.tokenId,
+    name: nft.name,
+    selected: true
+  }));
+  
+  // Create a modified collection object without the collection token
+  const distributableCollection = {
+    ...collection,
+    nfts: distributableNFTs
+  };
+  
+  const newDistribution: NFTDistribution = { 
+    collection: distributableCollection,
+    type: '1-to-1' as NFTDistributionType,
+    mapping,
+    nftMapping: selectedNFTs, // Use the explicitly selected NFTs array
+    amount: 1,
+    isRandom: false
   };
   
   debug(`Adding new NFT distribution:`, {
     collectionId: collection.id,
     collectionName: collection.name,
-    nftCount: collection.nfts.length,
+    nftCount: distributableNFTs.length,
     distributableNfts: nftsCount,
-    currentDistributions: nftDistributions.length
+    currentDistributions: filteredDistributions.length,
+    mappingSize: Object.keys(mapping).length,
+    nftMappingSize: newDistribution.nftMapping.length,
+    nfts: distributableNFTs.slice(0, 5).map(nft => ({ id: nft.tokenId, name: nft.name })),
+    // Log full details for verification
+    allNftsIncluded: distributableNFTs.length === selectedNFTs.length
   });
   
-  setNFTDistributions(prev => {
-    const updated = [...prev, newDistribution];
-    debug(`NFT distributions updated: ${prev.length} -> ${updated.length}`);
-    return updated;
-  });
+  setNFTDistributions([...filteredDistributions, newDistribution]);
+  debug(`NFT distributions updated: ${filteredDistributions.length} -> ${filteredDistributions.length + 1}`);
   
-  console.log(`[AirdropContext] Collection ${collectionId} added to distributions`);
+  console.log(`[AirdropContext] Collection ${collectionId} added to distributions with ${nftsCount} NFTs`);
 };
 
 export const handleUnselectCollection = (
@@ -78,52 +125,91 @@ export const handleSelectNFT = (
   collections: Collection[],
   nftDistributions: NFTDistribution[],
   setNFTDistributions: React.Dispatch<React.SetStateAction<NFTDistribution[]>>,
-  nftId: string
+  nftId: string,
+  collectionId?: string
 ) => {
   console.log(`[AirdropContext] Selecting NFT: ${nftId}`);
+  debug(`Attempting to select NFT: ${nftId}`);
   
-  // Check if this NFT is actually a collection token (same ID as collection ID)
-  const isCollectionToken = collections.some(c => c.id === nftId);
-  if (isCollectionToken) {
-    debug(`Ignoring selection of collection token ${nftId} - this is not a distributable NFT`);
-    toast.warning('Collection tokens cannot be distributed directly. Please select individual NFTs instead.');
+  // Check if this specific NFT is already individually added to distributions
+  // Only check for exact nft matches, not collection membership
+  const isAlreadyIndividuallySelected = nftDistributions.some(dist => 
+    dist.nft?.tokenId === nftId
+  );
+  
+  if (isAlreadyIndividuallySelected) {
+    debug(`NFT ${nftId} already individually selected in distributions`);
     return;
   }
   
-  let nft: NFT | undefined;
+  // Find specified collection if provided
   let parentCollection: Collection | undefined;
+  if (collectionId) {
+    parentCollection = collections.find(c => c.id === collectionId);
+    if (!parentCollection) {
+      debug(`Specified collection ${collectionId} not found, using fallback`);
+    }
+  }
   
+  // Create an NFT object even if we don't find it in collections
+  let nft: NFT;
+  
+  // Try to find the NFT in collections
+  let foundNft: NFT | undefined;
   for (const collection of collections) {
-    nft = collection.nfts.find(n => n.tokenId === nftId);
-    if (nft) {
-      parentCollection = collection;
+    const found = collection.nfts?.find(n => n.tokenId === nftId);
+    if (found) {
+      foundNft = found;
+      if (!parentCollection) {
+        parentCollection = collection;
+      }
       break;
     }
   }
   
-  if (!nft) {
-    console.error(`[AirdropContext] Cannot select NFT ${nftId}: Not found`);
-    return;
+  if (foundNft) {
+    debug(`Found NFT in collection: ${foundNft.name}`);
+    nft = foundNft;
+  } else {
+    // Create a minimal NFT if not found
+    debug(`NFT ${nftId} not found in any collection, creating minimal NFT object`);
+    nft = {
+      tokenId: nftId,
+      name: `NFT ${nftId.substring(0, 8)}...`,
+    };
   }
   
-  if (nftDistributions.some(dist => dist.nft?.tokenId === nftId)) {
-    console.log(`[AirdropContext] NFT ${nftId} already in distributions`);
-    return;
+  // If we still don't have a parent collection, create a minimal one
+  if (!parentCollection && collections.length > 0) {
+    parentCollection = collections[0];
+    debug(`Using ${parentCollection.name} as parent collection`);
+  } else if (!parentCollection) {
+    // Create a minimal collection if no collections exist
+    debug(`No collections available, creating minimal collection`);
+    parentCollection = {
+      id: collectionId || 'default-collection',
+      name: 'Untitled Collection',
+      nfts: [nft],
+      selected: true
+    };
   }
   
-  debug(`Adding NFT ${nft.name} to distributions`);
-  debug(`Parent collection: ${parentCollection?.name || 'Unknown'}`);
+  // Create a new distribution for this NFT
+  const newDistribution: NFTDistribution = {
+    type: '1-to-1',
+    nft,
+    collection: parentCollection,
+    amount: 1,
+    isRandom: false
+  };
   
-  setNFTDistributions(prev => [
-    ...prev, 
-    { 
-      nft,
-      collection: parentCollection,
-      type: 'random',
-      amount: 1
-    }
-  ]);
+  debug(`Adding NFT ${nft.name} to distributions`, {
+    nftId: nft.tokenId,
+    collectionName: parentCollection.name,
+    collectionId: parentCollection.id
+  });
   
+  setNFTDistributions(prev => [...prev, newDistribution]);
   console.log(`[AirdropContext] NFT ${nftId} added to distributions`);
 };
 
@@ -182,4 +268,55 @@ export const handleSetNFTAmount = (
       return distribution;
     })
   );
+};
+
+/**
+ * Update NFT distribution mappings when recipients are added
+ */
+export const updateNFTDistributionMappings = (
+  nftDistributions: NFTDistribution[],
+  setNFTDistributions: React.Dispatch<React.SetStateAction<NFTDistribution[]>>,
+  recipients: Recipient[]
+) => {
+  debug('Updating NFT distribution mappings for recipients:', {
+    recipientCount: recipients.length,
+    distributionCount: nftDistributions.length
+  });
+
+  const updatedDistributions = nftDistributions.map(distribution => {
+    if (distribution.type === '1-to-1' && distribution.mapping) {
+      // Get all NFTs that need to be mapped
+      const nftsToMap = distribution.collection 
+        ? distribution.collection.nfts.filter(n => n.tokenId !== distribution.collection?.id)
+        : distribution.nft 
+          ? [distribution.nft]
+          : [];
+
+      // Create new mapping
+      const newMapping: Record<string, string> = {};
+      
+      // Map NFTs to recipients
+      nftsToMap.forEach((nft, index) => {
+        if (index < recipients.length) {
+          newMapping[nft.tokenId] = recipients[index].id;
+        }
+      });
+
+      debug(`Updated mapping for distribution:`, {
+        collectionName: distribution.collection?.name,
+        nftName: distribution.nft?.name,
+        nftsToMap: nftsToMap.length,
+        recipientsAvailable: recipients.length,
+        newMappingSize: Object.keys(newMapping).length
+      });
+
+      return {
+        ...distribution,
+        mapping: newMapping
+      };
+    }
+    return distribution;
+  });
+
+  setNFTDistributions(updatedDistributions);
 };

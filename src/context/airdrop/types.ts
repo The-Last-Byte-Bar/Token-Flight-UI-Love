@@ -27,7 +27,7 @@ export interface AirdropContextType {
   
   selectCollection: (collectionId: string) => void;
   unselectCollection: (collectionId: string) => void;
-  selectNFT: (nftId: string) => void;
+  selectNFT: (nftId: string, collectionId?: string) => void;
   unselectNFT: (nftId: string) => void;
   setNFTDistributions: React.Dispatch<React.SetStateAction<NFTDistribution[]>>;
   setNFTDistributionType: (entityId: string, type: NFTDistributionType) => void;

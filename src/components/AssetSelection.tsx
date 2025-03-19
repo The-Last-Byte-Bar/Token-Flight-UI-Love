@@ -80,37 +80,66 @@ export default function AssetSelection() {
       
       return {
         token,
-        type: 'total',
+        type: 'total' as const,
         amount: initialAmount
       };
     });
     
-    // Create NFT distributions from selected collections
-    const nftDistributionsFromCollections = selectedCollections.map(collection => ({
-      collection,
-      type: '1-to-1'
-    }));
+    // For debugging, show all selected NFTs with their names
+    if (selectedNFTs.length > 0) {
+      debug('Selected NFTs before filtering:', selectedNFTs.map(nft => ({
+        id: nft.tokenId, 
+        name: nft.name
+      })));
+    }
+    
+    // Create a set of NFTs that are part of selected collections for faster lookups
+    const nftsInSelectedCollections = new Set<string>();
+    selectedCollections.forEach(collection => {
+      collection.nfts.forEach(nft => {
+        nftsInSelectedCollections.add(nft.tokenId);
+      });
+    });
+    
+    // Log the filter info
+    debug(`NFTs in selected collections: ${nftsInSelectedCollections.size}`);
     
     // Create NFT distributions from individually selected NFTs
     const nftDistributionsFromNFTs = selectedNFTs
       // Filter out NFTs that are already part of a selected collection
-      .filter(nft => !selectedCollections.some(c => 
-        c.nfts.some(n => n.tokenId === nft.tokenId)
-      ))
-      .map(nft => ({
-        nft,
-        type: '1-to-1'
-      }));
+      .filter(nft => {
+        const isInCollection = nftsInSelectedCollections.has(nft.tokenId);
+        if (isInCollection) {
+          debug(`Filtering out NFT ${nft.name} (${nft.tokenId}) as it's part of a selected collection`);
+        }
+        return !isInCollection;
+      })
+      .map(nft => {
+        // Find the parent collection for this NFT
+        const parentCollection = collections.find(c => 
+          c.nfts.some(n => n.tokenId === nft.tokenId)
+        );
+        
+        debug(`Creating individual NFT distribution for ${nft.name} (${nft.tokenId})`);
+        
+        return {
+          nft,
+          collection: parentCollection, // Include the parent collection info
+          type: '1-to-1' as const,
+          amount: 1, // Default to 1 NFT per recipient
+          isRandom: false // Default to non-random distribution
+        };
+      });
     
     debug('Created distributions:', {
       tokenDistributions: newTokenDistributions.length,
-      nftDistributionsFromCollections: nftDistributionsFromCollections.length,
-      nftDistributionsFromNFTs: nftDistributionsFromNFTs.length
+      nftDistributions: nftDistributionsFromNFTs.length,
+      individualNftNames: nftDistributionsFromNFTs.map(d => d.nft.name)
     });
     
     return {
       tokenDistributions: newTokenDistributions,
-      nftDistributions: [...nftDistributionsFromCollections, ...nftDistributionsFromNFTs]
+      nftDistributions: nftDistributionsFromNFTs
     };
   };
 
@@ -121,20 +150,14 @@ export default function AssetSelection() {
     debug('Updating distributions in context now', {
       tokenCount: newTokenDist.length,
       nftCount: newNftDist.length,
+      selectedNFTCount: selectedNFTs.length,
+      selectedCollectionCount: selectedCollections.length,
       tokens: newTokenDist.map(d => d.token.name),
-      nfts: newNftDist.map(d => {
-        if ('collection' in d && d.collection) {
-          return d.collection.name;
-        } else if ('nft' in d && d.nft) {
-          return d.nft.name;
-        } else {
-          return 'Unknown';
-        }
-      })
+      individualNfts: selectedNFTs.map(nft => nft.name)
     });
     
     // Only update if we have selections
-    if (newTokenDist.length === 0 && newNftDist.length === 0) {
+    if (newTokenDist.length === 0 && newNftDist.length === 0 && selectedCollections.length === 0) {
       debug('No assets selected');
       return;
     }
@@ -145,19 +168,43 @@ export default function AssetSelection() {
       selectToken(dist.token.tokenId);
     });
     
-    // Also explicitly select collections and NFTs
+    // Clear out existing collection data to prevent conflicts
+    debug('Selecting collections first');
+    // Explicitly select collections first
     selectedCollections.forEach(collection => {
       debug(`Explicitly selecting collection in context: ${collection.id}`);
       selectCollection(collection.id);
+      
+      // DEBUG: Log all NFTs in the collection
+      debug(`Collection ${collection.name} has ${collection.nfts.length} NFTs:`, 
+        collection.nfts.slice(0, 5).map(nft => ({id: nft.tokenId, name: nft.name, selected: nft.selected}))
+      );
     });
     
+    // Then handle individual NFT selections
+    debug('Processing individual NFT selections');
+    // Track NFTs that we've processed for individual selection
+    const processedNftIds = new Set<string>();
+    
+    // Then select individual NFTs that aren't part of selected collections
     selectedNFTs.forEach(nft => {
-      // Only select NFTs that aren't already part of selected collections
-      if (!selectedCollections.some(c => c.nfts.some(n => n.tokenId === nft.tokenId))) {
-        debug(`Explicitly selecting NFT in context: ${nft.tokenId}`);
+      // Check if this NFT is already part of a selected collection
+      const isInSelectedCollection = selectedCollections.some(c => 
+        c.nfts.some(n => n.tokenId === nft.tokenId)
+      );
+      
+      // If not in a selected collection, explicitly select it individually
+      if (!isInSelectedCollection) {
+        debug(`Explicitly selecting individual NFT in context: ${nft.tokenId} (${nft.name})`);
         selectNFT(nft.tokenId);
+        processedNftIds.add(nft.tokenId);
+      } else {
+        debug(`NFT ${nft.tokenId} (${nft.name}) is part of a selected collection, skipping individual selection`);
       }
     });
+    
+    // Double-check we've processed all NFTs
+    debug(`Processed ${processedNftIds.size} NFTs individually out of ${selectedNFTs.length} total selected`);
     
     // Now set the distributions directly
     setTokenDistributions(newTokenDist);

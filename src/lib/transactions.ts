@@ -13,10 +13,20 @@ import { ERG_DECIMALS } from './constants';
 import { isConnectedToNautilus, isNautilusAvailable } from './wallet';
 import { isValidErgoAddress, isValidAmount } from './validation';
 
+// Declare ergo type from window object
+declare const ergo: {
+  get_used_addresses: () => Promise<string[]>;
+  get_change_address: () => Promise<string>;
+  get_utxos: () => Promise<any[]>;
+  get_current_height: () => Promise<number>;
+  sign_tx: (unsignedTx: any) => Promise<any>;
+  submit_tx: (signedTx: any) => Promise<string>;
+};
+
 // Fee amount in nanoERGs
-export const DEFAULT_TX_FEE = "1000000"; // 0.001 ERG 
+export const DEFAULT_TX_FEE = "1000000"; // 0.001 ERG for mining fee
 export const MIN_TX_FEE = "1000000"; // 0.001 ERG minimum
-export const FEE_PER_KB = "1000000"; // Additional 0.001 ERG per KB
+export const FEE_PER_BOX = "1000000"; // 0.001 ERG per box creation
 
 /**
  * Get all UTXOs (boxes) from the connected wallet
@@ -28,7 +38,7 @@ export const getWalletBoxes = async (): Promise<Box<string>[]> => {
 
   try {
     // Get all UTXOs from the wallet and convert them to Fleet SDK Box format
-    const utxos = await window.ergo?.get_utxos() || [];
+    const utxos = await ergo.get_utxos();
     console.log('Wallet UTXOs received:', utxos.length, utxos[0]);
     
     // Ensure all UTXOs have the necessary fields for Fleet SDK
@@ -335,129 +345,62 @@ export const signAndSubmitTx = async (unsignedTx: any): Promise<string> => {
       outputsCount: unsignedTx.outputs?.length || 0,
       dataInputsCount: unsignedTx.dataInputs?.length || 0,
     });
-    
+
     // Sign the transaction using the wallet
-    let signedTx;
-    try {
-      signedTx = await window.ergo?.sign_tx(unsignedTx);
-      console.log('Transaction signed successfully:', !!signedTx);
-    } catch (signError) {
-      console.error('Detailed sign error:', signError);
-      
-      // Special handling for code 1 errors (common with Nautilus)
-      if (signError && typeof signError === 'object' && 'code' in signError && signError.code === 1) {
-        // Common causes for code 1 errors:
-        // 1. Insufficient funds
-        // 2. Transaction too complex
-        // 3. User rejected
-        // 4. Wallet locked
-        
-        const suggestions = [
-          "Ensure you have sufficient ERG for transaction fees",
-          "Try with fewer recipients in a single transaction",
-          "Check if your wallet is unlocked",
-          "Make sure you have enough of the token you're trying to send",
-          "Verify you're connected to the correct Ergo network"
-        ];
-        
-        console.error("Code 1 error - Common solutions:", suggestions);
-        throw new Error(`Wallet transaction signing failed. Possible solutions: ${suggestions.join(", ")}`);
-      }
-      
-      throw new Error(`Failed to sign transaction: ${JSON.stringify(signError)}`);
-    }
+    const signedTx = await ergo.sign_tx(unsignedTx);
     
     if (!signedTx) {
-      throw new Error('Wallet returned empty signed transaction - user may have denied the request');
+      throw new Error('Wallet returned empty signed transaction');
     }
-    
-    console.log('Signed transaction structure:', {
+
+    console.log('Transaction signed successfully:', {
       inputsCount: signedTx.inputs?.length || 0,
       outputsCount: signedTx.outputs?.length || 0,
     });
-    
-    // Submit the signed transaction
-    let txId;
-    try {
-      // Log detailed information about the signed transaction
-      console.log('Submitting transaction with structure:', {
-        inputs: signedTx.inputs?.map(input => ({
-          boxId: input.boxId,
-          extension: !!input.extension,
-          spendingProof: !!input.spendingProof
-        })),
-        outputs: signedTx.outputs?.map((output, i) => ({
-          index: i,
-          value: output.value,
-          ergoTree: output.ergoTree?.substring(0, 20) + '...',
-          assets: output.assets?.length || 0
-        })),
-        size: JSON.stringify(signedTx).length
-      });
 
-      // Add a small delay before submitting (can help with wallet readiness)
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      txId = await window.ergo?.submit_tx(signedTx);
-      console.log('Transaction submitted with ID:', txId);
-    } catch (submitError) {
-      console.error('Detailed submit error:', submitError);
-      
-      // Enhanced error logging for more specific diagnosis
-      console.error('Submit error type:', typeof submitError);
-      if (submitError && typeof submitError === 'object') {
-        console.error('Submit error properties:', Object.keys(submitError));
-        
-        // Try to extract more information from common error patterns
-        if ('message' in submitError) console.error('Error message:', (submitError as any).message);
-        if ('cause' in submitError) console.error('Error cause:', (submitError as any).cause);
-        if ('response' in submitError) console.error('Error response:', (submitError as any).response);
-      }
-      
-      // Special handling for code 1 errors (common with Nautilus)
-      if (submitError && typeof submitError === 'object' && 'code' in submitError && submitError.code === 1) {
-        // Common causes for code 1 errors in submission:
-        // 1. Network connectivity issues
-        // 2. Node rejected transaction (double spend, invalid, etc.)
-        // 3. Wallet not properly connected to node
-        
-        const suggestions = [
-          "Check your internet connection",
-          "Ensure your wallet is properly connected to an Ergo node",
-          "The transaction may violate blockchain rules (e.g., minimum ERG per box)",
-          "Try with a higher fee if the network is congested",
-          "Wait a few minutes and try again"
-        ];
-        
-        console.error("Code 1 submit error - Common solutions:", suggestions);
-        throw new Error(`Transaction submission failed. Possible solutions: ${suggestions.join(", ")}`);
-      }
-      
-      throw new Error(`Failed to submit transaction: ${JSON.stringify(submitError)}`);
-    }
+    // Submit the transaction
+    const txId = await ergo.submit_tx(signedTx);
     
     if (!txId) {
-      throw new Error('Wallet returned empty transaction ID after submission');
+      throw new Error('Wallet returned empty transaction ID');
     }
-    
+
+    console.log('Transaction submitted successfully:', txId);
     return txId;
+    
   } catch (error) {
-    // Enhanced error logging
     console.error('Error in signAndSubmitTx:', error);
-    if (typeof error === 'object' && error !== null) {
-      console.error('Error details:', JSON.stringify(error, null, 2));
-    }
     
-    // Create a more descriptive error message
-    let errorMessage = 'Transaction signing/submission failed';
+    // Enhanced error handling
     if (error instanceof Error) {
-      errorMessage = error.message;
-    } else if (typeof error === 'object' && error !== null) {
-      errorMessage = JSON.stringify(error);
+      if (error.message.includes('password') || error.message.includes('rejected')) {
+        throw new Error('Wallet authentication failed. Please check your password and try again.');
+      }
+      throw error;
     }
     
-    toast.error(`Transaction error: ${errorMessage}`);
-    throw error; // Re-throw the original error to maintain the stack trace
+    // If it's a code 1 error from Nautilus, try to get more information
+    if (error && typeof error === 'object' && 'code' in error && error.code === 1) {
+      console.error('Detailed error object:', error);
+      
+      // Try to extract more specific error information
+      let errorInfo = 'Unknown error';
+      if ('info' in error && error.info) {
+        errorInfo = error.info as string;
+      }
+      
+      const suggestions = [
+        "Check your internet connection",
+        "Ensure your wallet is properly connected to an Ergo node",
+        "The transaction may violate blockchain rules (e.g., minimum ERG per box)",
+        "Try with a higher fee if the network is congested",
+        "Wait a few minutes and try again"
+      ];
+      
+      throw new Error(`Transaction submission failed (${errorInfo}). Possible solutions: ${suggestions.join(", ")}`);
+    }
+    
+    throw new Error(`Failed to submit transaction: ${JSON.stringify(error)}`);
   }
 };
 
@@ -593,40 +536,336 @@ export const calculateWalletBalance = async () => {
  * @returns Recommended fee in nanoERGs as string
  */
 export const calculateRecommendedFee = (txObj: any): string => {
-  // Default base fee for transactions
-  const BASE_FEE = 1000000n; // 0.001 ERG
+  // Base fee for mining (0.001 ERG)
+  const BASE_FEE = 1000000n;
   
-  // Additional fee per KB of transaction size (approximate)
-  const FEE_PER_KB = 500000n; // 0.0005 ERG per KB
+  // Instead of adding fee per box, we'll just use the minimum required fee
+  // This ensures we don't overcharge users for multi-output transactions
+  const totalFee = BASE_FEE;
   
-  // Complexity-based additions
-  const inputCount = txObj.inputs?.length || 0;
-  const outputCount = txObj.outputs?.length || 0;
-  const dataInputCount = txObj.dataInputs?.length || 0;
-  
-  // Estimate size in KB (very rough approximation)
-  // A typical input is ~100 bytes and output ~60 bytes
-  const estimatedSizeBytes = (inputCount * 100) + (outputCount * 60) + (dataInputCount * 32);
-  const estimatedSizeKB = Math.max(1, Math.ceil(estimatedSizeBytes / 1024));
-  
-  // Calculate fee based on complexity
-  const perKBFee = FEE_PER_KB * BigInt(estimatedSizeKB);
-  
-  // Higher fee for more complex transactions
-  const complexityFactor = BigInt(Math.max(1, Math.min(3, Math.ceil((inputCount + outputCount) / 10))));
-  
-  // Final fee calculation
-  const recommendedFee = BASE_FEE + perKBFee * complexityFactor;
-  
-  // For very small transactions, still ensure minimum fee
-  const finalFee = recommendedFee < 1000000n ? 1000000n : recommendedFee;
-  
-  console.log("Calculated fee for transaction:", finalFee.toString(), "nanoERG", {
-    estimatedSizeKB, 
-    inputCount, 
-    outputCount, 
-    dataInputCount
+  console.log("Calculated fee for transaction:", {
+    feeInERG: Number(totalFee) / 1e9,
+    outputCount: txObj.outputs?.length || 0,
+    baseFee: Number(BASE_FEE) / 1e9
   });
   
-  return finalFee.toString();
+  return totalFee.toString();
+};
+
+/**
+ * Build a transaction to send multiple tokens and NFTs to recipients
+ * @param wallet Wallet information
+ * @param distributions Array of distributions containing tokens and NFTs to send
+ * @param fee Transaction fee in nanoERGs
+ */
+export const buildBatchTransferTx = async (
+  wallet: WalletInfo,
+  distributions: {
+    address: string;
+    tokens: { tokenId: string; amount: string | number | bigint; decimals?: number }[];
+    nfts: { tokenId: string }[];
+  }[],
+  fee: string = DEFAULT_TX_FEE
+) => {
+  if (!isNautilusAvailable() || !(await isConnectedToNautilus())) {
+    throw new Error('Wallet not connected');
+  }
+  
+  // Validate distributions before proceeding
+  if (!distributions || distributions.length === 0) {
+    throw new Error('No distributions provided for transaction');
+  }
+  
+  try {
+    // Get input boxes from wallet
+    const inputBoxes = await getWalletBoxes();
+    
+    if (inputBoxes.length === 0) {
+      throw new Error('No input boxes available in wallet');
+    }
+
+    // Validate token balances before proceeding
+    // Calculate total tokens needed for all distributions
+    const requiredTokens: Map<string, bigint> = new Map();
+    
+    for (const distribution of distributions) {
+      for (const token of distribution.tokens) {
+        // Convert amount to bigint for consistent comparison
+        // The amount should already be in raw units from airdropState.ts
+        let tokenAmount: bigint;
+        if (typeof token.amount === 'string') {
+          tokenAmount = BigInt(token.amount);
+        } else if (typeof token.amount === 'number') {
+          // If a number, it should already account for decimals
+          // Just convert to bigint
+          tokenAmount = BigInt(Math.floor(token.amount));
+        } else {
+          tokenAmount = token.amount;
+        }
+        
+        console.log(`Validating token ${token.tokenId.substring(0, 8)}...`, {
+          inputAmount: token.amount,
+          convertedAmount: tokenAmount.toString(),
+          decimals: token.decimals
+        });
+        
+        // Add to required tokens map
+        const currentRequired = requiredTokens.get(token.tokenId) || 0n;
+        requiredTokens.set(token.tokenId, currentRequired + tokenAmount);
+      }
+      
+      // Add NFTs (1 per NFT)
+      for (const nft of distribution.nfts) {
+        const currentRequired = requiredTokens.get(nft.tokenId) || 0n;
+        requiredTokens.set(nft.tokenId, currentRequired + 1n);
+      }
+    }
+    
+    // Calculate available tokens in wallet
+    const availableTokens: Map<string, bigint> = new Map();
+    for (const box of inputBoxes) {
+      for (const asset of box.assets) {
+        const currentAmount = availableTokens.get(asset.tokenId) || 0n;
+        availableTokens.set(asset.tokenId, currentAmount + BigInt(asset.amount));
+      }
+    }
+    
+    // Log all token balances for debugging
+    console.log('Available token balances:', Array.from(availableTokens.entries()).map(([id, amount]) => ({
+      tokenId: id.substring(0, 8) + '...',
+      available: amount.toString()
+    })));
+    
+    console.log('Required token amounts:', Array.from(requiredTokens.entries()).map(([id, amount]) => ({
+      tokenId: id.substring(0, 8) + '...',
+      required: amount.toString()
+    })));
+    
+    // Check if we have enough of each token
+    for (const [tokenId, requiredAmount] of requiredTokens.entries()) {
+      const availableAmount = availableTokens.get(tokenId) || 0n;
+      if (availableAmount < requiredAmount) {
+        console.error(`Insufficient token balance for ${tokenId.substring(0, 10)}...`, {
+          required: requiredAmount.toString(),
+          available: availableAmount.toString()
+        });
+        throw new Error(`Insufficient token balance: Required ${requiredAmount} of token ${tokenId.substring(0, 6)}..., but only ${availableAmount} available`);
+      }
+    }
+
+    // Get the current blockchain height
+    let blockHeight = 1000000;
+    try {
+      const currentHeight = await ergo.get_current_height();
+      if (currentHeight) {
+        blockHeight = currentHeight;
+        console.log(`Using current blockchain height: ${blockHeight}`);
+      }
+    } catch (heightError) {
+      console.warn(`Could not get current height, using default: ${blockHeight}`, heightError);
+    }
+
+    // Initialize transaction builder
+    const txBuilder = new TransactionBuilder(blockHeight);
+    
+    // Add input boxes
+    txBuilder.from(inputBoxes);
+
+    // Process each distribution
+    for (const distribution of distributions) {
+      const { address, tokens, nfts } = distribution;
+      
+      // Validate address
+      if (!address || !isValidErgoAddress(address)) {
+        throw new Error(`Invalid Ergo address: ${address || 'undefined'}`);
+      }
+
+      // Calculate minimum ERG value needed for this output
+      // Modified to use fixed minimum value per box with a small increment per token
+      const tokenCount = tokens.length + nfts.length;
+      const MIN_BOX_VALUE = BigInt(1000000); // 0.001 ERG minimum box value (unchanged)
+      const TOKEN_SIZE_VALUE = BigInt(100000); // 0.0001 ERG per token for box size (reduced)
+      
+      // Use a fixed minimum amount per recipient instead of per token
+      const boxValue = MIN_BOX_VALUE + (BigInt(tokenCount) * TOKEN_SIZE_VALUE);
+
+      console.log(`Creating output box for ${address} with:`, {
+        tokenCount,
+        baseValue: Number(MIN_BOX_VALUE) / 1e9,
+        tokenSizeValue: Number(TOKEN_SIZE_VALUE * BigInt(tokenCount)) / 1e9,
+        totalValue: Number(boxValue) / 1e9
+      });
+
+      // Create output builder with calculated ERG value
+      const outputBuilder = new OutputBuilder(boxValue.toString(), address);
+
+      // Add tokens
+      for (const token of tokens) {
+        if (!isValidAmount(token.amount)) {
+          throw new Error(`Invalid amount for token ${token.tokenId}: ${token.amount}`);
+        }
+
+        // The amount should already be in raw units from airdropState.ts,
+        // so we don't need to apply decimal conversion again
+        let amountStr: string;
+        if (typeof token.amount === 'string') {
+          amountStr = token.amount;
+        } else if (typeof token.amount === 'number') {
+          amountStr = Math.floor(token.amount).toString();
+        } else {
+          amountStr = token.amount.toString();
+        }
+
+        // Validate the final amount string
+        if (!/^\d+$/.test(amountStr)) {
+          throw new Error(`Invalid amount string after conversion: ${amountStr}`);
+        }
+
+        // Validate amount against available balance
+        const amountValue = BigInt(amountStr);
+        const availableForToken = availableTokens.get(token.tokenId) || 0n;
+        
+        if (amountValue > availableForToken) {
+          console.error(`Insufficient token balance for ${token.tokenId.substring(0, 10)}...`, {
+            required: amountValue.toString(),
+            available: availableForToken.toString()
+          });
+          throw new Error(`Insufficient token balance: Required ${amountValue} of token ${token.tokenId.substring(0, 6)}..., but only ${availableForToken} available`);
+        }
+
+        console.log(`Adding token ${token.tokenId.substring(0, 8)}... to output:`, {
+          rawAmount: amountStr,
+          originalAmount: token.amount,
+          correctDecimals: token.decimals || 0
+        });
+
+        outputBuilder.addTokens([{
+          tokenId: token.tokenId,
+          amount: amountStr
+        }]);
+      }
+
+      // Add NFTs (amount is always 1 for NFTs)
+      for (const nft of nfts) {
+        outputBuilder.addTokens([{
+          tokenId: nft.tokenId,
+          amount: "1"
+        }]);
+      }
+
+      // Add output to transaction
+      txBuilder.to(outputBuilder);
+    }
+
+    // Set change address
+    if (!wallet.changeAddress && !wallet.address) {
+      throw new Error('No change address available');
+    }
+    txBuilder.sendChangeTo(wallet.changeAddress || wallet.address || '');
+
+    // Calculate and set recommended fee
+    const tempTx = txBuilder.build().toEIP12Object();
+    const recommendedFee = calculateRecommendedFee(tempTx);
+    txBuilder.payFee(recommendedFee);
+
+    // Build the final unsigned transaction
+    const unsignedTx = txBuilder.build().toEIP12Object();
+    console.log('Built transaction:', {
+      inputs: unsignedTx.inputs?.length,
+      outputs: unsignedTx.outputs?.length,
+      fee: recommendedFee,
+      size: JSON.stringify(unsignedTx).length
+    });
+    
+    return unsignedTx;
+  } catch (error) {
+    console.error('Error building batch transfer transaction:', error);
+    toast.error(`Transaction building error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw error;
+  }
+};
+
+/**
+ * Get a more meaningful message from InsufficientInputs errors
+ */
+export const formatInsufficientInputsError = (error: any): string => {
+  if (error?.message?.includes('InsufficientInputs')) {
+    // Try to extract token information from the error message
+    const tokenIdMatch = error.message.match(/tokenId=([a-f0-9]+)/i);
+    const requiredMatch = error.message.match(/required=([0-9]+)/i);
+    
+    if (tokenIdMatch && requiredMatch) {
+      const tokenId = tokenIdMatch[1];
+      const required = requiredMatch[1];
+      
+      return `Insufficient token balance: You need at least ${required} of token ${tokenId.substring(0, 8)}... to complete this transaction.`;
+    }
+    
+    // If we can't extract specific token info, return a more generic but helpful message
+    return 'Insufficient balance: You do not have enough tokens to complete this transaction. Please check your wallet balance.';
+  }
+  
+  // For other errors, just return the message
+  return error?.message || 'An unknown error occurred';
+};
+
+/**
+ * Fetch token information from the Ergo blockchain API
+ * @param tokenId The token ID to fetch information for
+ * @returns The token information with decimals
+ */
+export const fetchTokenInfo = async (tokenId: string): Promise<{
+  id: string;
+  name: string;
+  decimals: number;
+} | null> => {
+  try {
+    const response = await fetch(`https://api.ergoplatform.com/api/v1/tokens/${tokenId}`);
+    if (!response.ok) {
+      console.warn(`Failed to fetch token info for ${tokenId}: ${response.statusText}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    console.log(`Token info from API for ${tokenId}:`, data);
+    
+    return {
+      id: data.id,
+      name: data.name,
+      decimals: data.decimals
+    };
+  } catch (error) {
+    console.error(`Error fetching token info for ${tokenId}:`, error);
+    return null;
+  }
+};
+
+// Cache for token decimal information
+const tokenDecimalsCache = new Map<string, number>();
+
+/**
+ * Get the correct decimals for a token, using API if needed
+ * @param tokenId The token ID
+ * @param providedDecimals The decimals value from the local token metadata
+ * @returns The correct decimals value
+ */
+export const getCorrectTokenDecimals = async (
+  tokenId: string, 
+  providedDecimals: number = 0
+): Promise<number> => {
+  // Check cache first
+  if (tokenDecimalsCache.has(tokenId)) {
+    return tokenDecimalsCache.get(tokenId)!;
+  }
+  
+  // Try to fetch from API
+  const tokenInfo = await fetchTokenInfo(tokenId);
+  if (tokenInfo && typeof tokenInfo.decimals === 'number') {
+    // Cache the result
+    tokenDecimalsCache.set(tokenId, tokenInfo.decimals);
+    return tokenInfo.decimals;
+  }
+  
+  // Fallback to provided decimals
+  return providedDecimals;
 }; 

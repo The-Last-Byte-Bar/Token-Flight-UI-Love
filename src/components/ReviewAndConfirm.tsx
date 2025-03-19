@@ -1,9 +1,8 @@
-
 import { useState } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
-import { NFTDistributionType, TokenDistributionType } from '@/types';
+import { NFTDistributionType, TokenDistributionType } from '@/types/index';
 
 const ReviewAndConfirm = () => {
   const { 
@@ -39,11 +38,38 @@ const ReviewAndConfirm = () => {
     }
   };
   
+  // Format token amount considering decimals
+  const formatTokenAmount = (amount: number, decimals: number) => {
+    // Convert raw amount to decimal display value
+    return (amount / Math.pow(10, decimals)).toString();
+  };
+  
+  // Calculate total tokens for a distribution
   const calculateTotalTokens = (distribution: typeof tokenDistributions[0]) => {
-    if (distribution.type === 'total') {
-      return distribution.amount;
+    const { type, amount, token } = distribution;
+    const decimals = token.decimals || 0;
+    
+    if (type === 'total') {
+      return formatTokenAmount(amount, decimals);
+    } else if (type === 'per-user') {
+      // For per-user, multiply by number of recipients
+      const totalRawAmount = amount * recipients.length;
+      return formatTokenAmount(totalRawAmount, decimals);
+    }
+    return '0';
+  };
+  
+  // Calculate per-recipient amount
+  const calculatePerRecipientAmount = (distribution: typeof tokenDistributions[0]) => {
+    const { type, amount, token } = distribution;
+    const decimals = token.decimals || 0;
+    
+    if (type === 'total') {
+      // For total distribution, divide by number of recipients
+      return formatTokenAmount(amount / recipients.length, decimals);
     } else {
-      return distribution.amount * recipients.length;
+      // For per-user, amount is already per recipient
+      return formatTokenAmount(amount, decimals);
     }
   };
   
@@ -104,9 +130,19 @@ const ReviewAndConfirm = () => {
                         <span className="text-deepsea-bright">
                           {distribution.type === 'total' ? 'Total Amount:' : 'Amount Per Recipient:'}
                         </span>
-                        <span className="ml-2">{distribution.amount}</span>
+                        <span className="ml-2">
+                          {formatTokenAmount(distribution.amount, distribution.token.decimals)}
+                        </span>
                       </div>
-                      <div className="text-right">
+                      {distribution.type === 'total' && (
+                        <div>
+                          <span className="text-deepsea-bright">Amount Per Recipient:</span>
+                          <span className="ml-2">
+                            {calculatePerRecipientAmount(distribution)}
+                          </span>
+                        </div>
+                      )}
+                      <div className={distribution.type === 'total' ? 'col-span-2 text-right' : 'text-right'}>
                         <span className="text-deepsea-bright">Total Tokens:</span>
                         <span className="ml-2">{calculateTotalTokens(distribution)}</span>
                       </div>
@@ -132,9 +168,14 @@ const ReviewAndConfirm = () => {
                     ? distribution.collection.name 
                     : distribution.nft?.name || 'Unknown NFT';
                   
-                  const count = distribution.collection 
-                    ? distribution.collection.nfts.filter(n => n.selected).length 
-                    : 1;
+                  // Get list of NFTs being distributed
+                  const nfts = distribution.collection 
+                    ? distribution.collection.nfts
+                        .filter(n => n.tokenId !== distribution.collection?.id)
+                        .map(n => n.name)
+                    : distribution.nft 
+                      ? [distribution.nft.name]
+                      : [];
                   
                   return (
                     <div key={index} className="bg-deepsea-dark/30 p-3">
@@ -144,8 +185,15 @@ const ReviewAndConfirm = () => {
                       </div>
                       <div className="mt-2 text-sm">
                         <span className="text-deepsea-bright">NFTs to distribute:</span>
-                        <span className="ml-2">{count}</span>
+                        <span className="ml-2">{nfts.length}</span>
                       </div>
+                      {nfts.length > 0 && (
+                        <div className="mt-2 text-xs text-gray-400 space-y-1">
+                          {nfts.map((nftName, i) => (
+                            <div key={i}>• {nftName}</div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

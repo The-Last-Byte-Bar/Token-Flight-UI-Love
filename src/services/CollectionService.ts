@@ -1,6 +1,10 @@
 import { Collection, NFT, Token } from "@/types/index";
 import { isConnectedToNautilus, isNautilusAvailable } from "@/lib/wallet";
 import { toast } from "sonner";
+import { TokenService } from './TokenService';
+import { createDebugLogger } from '@/hooks/useDebugLog';
+
+const debug = createDebugLogger('CollectionService');
 
 // API endpoint for token and box metadata
 const TOKEN_METADATA_API = "https://api.ergoplatform.com/api/v1/tokens";
@@ -15,14 +19,11 @@ const tokenDetailsCache = new Map<string, Token>();
  */
 export class CollectionService {
   /**
-   * Get all tokens from the connected wallet with pagination support
-   * @param limit Maximum number of tokens to fetch (default: 20)
-   * @param offset Starting index for pagination (default: 0)
+   * Get tokens from the wallet with pagination
    */
   static async getWalletTokens(limit: number = 20, offset: number = 0): Promise<{ tokens: Token[], total: number }> {
     if (!isNautilusAvailable() || !(await isConnectedToNautilus())) {
-      toast.error("Wallet not connected");
-      throw new Error("Wallet not connected");
+      throw new Error('Wallet not connected');
     }
 
     try {
@@ -41,7 +42,7 @@ export class CollectionService {
           if (token.tokenId && token.name) {
             tokenInfoMap.set(token.tokenId, {
               name: token.name || token.tokenId.substring(0, 8),
-              decimals: token.decimals || 0,
+              decimals: typeof token.decimals === 'number' ? token.decimals : 0,
               description: token.description || "",
               icon: token.icon || ""
             });
@@ -50,38 +51,38 @@ export class CollectionService {
       }
 
       // Extract tokens from boxes
-      utxos.forEach((box: any) => {
+      for (const box of utxos) {
         if (box.assets && box.assets.length > 0) {
-          box.assets.forEach((asset: any) => {
+          for (const asset of box.assets) {
             const { tokenId, amount } = asset;
             const tokenInfo = tokenInfoMap.get(tokenId) || {
               name: asset.name || tokenId.substring(0, 8),
-              decimals: asset.decimals || 0,
+              decimals: typeof asset.decimals === 'number' ? asset.decimals : 0,
               description: "",
               icon: ""
             };
             
             if (tokensMap.has(tokenId)) {
-              // Add to existing amount - using number as specified in Token interface
+              // Add to existing amount
               const existingToken = tokensMap.get(tokenId)!;
               tokensMap.set(tokenId, {
                 ...existingToken,
-                amount: existingToken.amount + Number(amount)
+                amount: BigInt(existingToken.amount.toString()) + BigInt(amount)
               });
             } else {
-              // Add new token - using number as specified in Token interface
+              // Add new token
               tokensMap.set(tokenId, {
                 tokenId: tokenId,
                 name: tokenInfo.name,
-                amount: Number(amount),
+                amount: BigInt(amount),
                 decimals: tokenInfo.decimals,
-                description: tokenInfo.description || "",
-                icon: tokenInfo.icon || ""
+                description: tokenInfo.description,
+                icon: tokenInfo.icon
               });
             }
-          });
+          }
         }
-      });
+      }
 
       // Convert to array for pagination
       const allTokens = Array.from(tokensMap.values());
@@ -90,26 +91,17 @@ export class CollectionService {
       // Apply pagination
       const pagedTokens = allTokens.slice(offset, offset + limit);
       
-      // Only enhance token metadata for the current page
-      for (const token of pagedTokens) {
-        if (!token.name || token.name === token.tokenId.substring(0, 8)) {
-          try {
-            const enhancedToken = await this.getTokenDetails(token.tokenId);
-            if (enhancedToken.name !== token.tokenId.substring(0, 8)) {
-              token.name = enhancedToken.name;
-              token.description = enhancedToken.description;
-              token.icon = enhancedToken.icon;
-            }
-          } catch (error) {
-            console.warn(`Could not fetch details for token ${token.tokenId}`);
-          }
-        }
-      }
-
-      return { tokens: pagedTokens, total: totalTokens };
+      // Enhance token metadata for the current page
+      const enhancedTokens = await Promise.all(
+        pagedTokens.map(token => TokenService.enhanceTokenWithMetadata(token))
+      );
+      
+      return {
+        tokens: enhancedTokens,
+        total: totalTokens
+      };
     } catch (error) {
-      console.error("Error getting wallet tokens:", error);
-      toast.error("Failed to fetch wallet tokens");
+      console.error('Error getting wallet tokens:', error);
       throw error;
     }
   }
@@ -274,9 +266,6 @@ export class CollectionService {
         const nftObj: NFT = {
           tokenId: token.tokenId,
           name,
-          description,
-          imageUrl: "", // Don't use placeholder images that cause errors
-          collectionId: collectionId,
           selected: false
         };
         
@@ -312,7 +301,7 @@ export class CollectionService {
                     tokenId: collectionId,
                     name: data.name,
                     description: data.description || "",
-                    amount: 0,
+                    amount: BigInt(0),
                     decimals: 0
                   });
                 }
@@ -374,7 +363,7 @@ export class CollectionService {
       return {
         tokenId: data.id,
         name: data.name || tokenId.substring(0, 8),
-        amount: data.amount || 0,
+        amount: BigInt(data.amount || 0),
         decimals: data.decimals || 0,
         description: data.description || "",
         icon: data.icon || ""
@@ -386,7 +375,7 @@ export class CollectionService {
       return {
         tokenId: tokenId,
         name: tokenId.substring(0, 8),
-        amount: 0,
+        amount: BigInt(0),
         decimals: 0,
         description: "Token details unavailable",
         icon: ""

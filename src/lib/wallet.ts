@@ -18,6 +18,7 @@ declare global {
       get_utxos: () => Promise<any[]>;
       sign_tx: (tx: any) => Promise<any>;
       submit_tx: (tx: any) => Promise<string>;
+      get_current_height: () => Promise<number>;
     };
   }
 }
@@ -136,4 +137,35 @@ export const getWalletTokens = async () => {
     console.error('Error getting token balances:', error);
     throw error;
   }
+};
+
+/**
+ * Ensure wallet is connected, attempt to connect if not
+ * @returns Promise<WalletInfo> Connected wallet information
+ */
+export const ensureWalletConnected = async (): Promise<WalletInfo> => {
+  if (!isNautilusAvailable()) {
+    throw new Error('Nautilus wallet not detected. Please install it first.');
+  }
+
+  // Check if already connected
+  const isConnected = await isConnectedToNautilus();
+  if (isConnected) {
+    // Get wallet info
+    const addresses = await window.ergo?.get_used_addresses() || [];
+    const changeAddress = await window.ergo?.get_change_address() || '';
+    const balanceInNanoErg = await window.ergo?.get_balance() || '0';
+    const ergBalance = Number(balanceInNanoErg) / Math.pow(10, ERG_DECIMALS);
+
+    return {
+      connected: true,
+      address: addresses[0],
+      balance: ergBalance,
+      addresses: addresses,
+      changeAddress: changeAddress
+    };
+  }
+
+  // If not connected, attempt to connect
+  return await connectNautilusWallet();
 }; 

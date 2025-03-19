@@ -1,8 +1,17 @@
-import { AirdropConfig, NFTDistribution, Recipient, TokenDistribution, WalletInfo } from "@/types";
+import { 
+  AirdropConfig, 
+  NFTDistribution, 
+  Recipient, 
+  TokenDistribution,
+  WalletInfo 
+} from '@/types/index';
 import { toast } from "sonner";
 import { isConnectedToNautilus, isNautilusAvailable } from "@/lib/wallet";
-import { TransactionBuilder, OutputBuilder } from "@fleet-sdk/core";
-import { signAndSubmitTx, calculateRecommendedFee } from "@/lib/transactions";
+import { TransactionBuilder, OutputBuilder } from '@fleet-sdk/core';
+import { signAndSubmitTx, calculateRecommendedFee, buildBatchTransferTx } from "@/lib/transactions";
+import { createDebugLogger, flushLogs } from '@/hooks/useDebugLog';
+
+const debug = createDebugLogger('AirdropService');
 
 /**
  * Service to handle token and NFT airdrops using Fleet SDK
@@ -29,78 +38,68 @@ export class AirdropService {
     }
 
     try {
-      // Get all UTXOs from the wallet
-      const utxos = await window.ergo?.get_utxos() || [];
+      // Prepare distributions for each recipient
+      const distributions = config.recipients.map(recipient => {
+        const tokens: { tokenId: string; amount: string | number | bigint; decimals: number }[] = [];
+        const nfts: { tokenId: string }[] = [];
 
-      if (utxos.length === 0) {
-        throw new Error("No UTXOs found in wallet");
-      }
+        // Add token distributions
+        for (const tokenDist of config.tokenDistributions) {
+          const { token, type, amount } = tokenDist;
+          const tokenAmount = type === "total" 
+            ? amount / config.recipients.length
+            : amount;
+          
+          tokens.push({
+            tokenId: token.tokenId,
+            amount: tokenAmount,
+            decimals: token.decimals
+          });
+        }
 
-      // Initialize transaction builder with a default height
-      // In a production app, you'd get the current blockchain height
-      const txBuilder = new TransactionBuilder(1000000);
-      
-      // Add input boxes from the wallet
-      txBuilder.from(utxos.map(convertErgoBoxToFleetBox));
+        // Add NFT distributions
+        for (const nftDist of config.nftDistributions) {
+          const { type, collection, mapping } = nftDist;
+          
+          if (type === "1-to-1" && mapping) {
+            // For 1-to-1 mapping, find the NFT assigned to this recipient
+            const nftId = Object.entries(mapping).find(([_, recipientId]) => recipientId === recipient.id)?.[0];
+            if (nftId) {
+              nfts.push({ tokenId: nftId });
+            }
+          } else if (type === "total" && collection) {
+            // For total distribution, add all selected NFTs
+            const selectedNFTs = collection.nfts.filter(n => n.selected);
+            selectedNFTs.forEach(nft => {
+              nfts.push({ tokenId: nft.id });
+            });
+          } else if (type === "random" && collection) {
+            // For random distribution, we'll handle this separately
+            // as it requires shuffling and special handling
+            const selectedNFTs = collection.nfts.filter(n => n.selected);
+            if (selectedNFTs.length > 0) {
+              const randomIndex = Math.floor(Math.random() * selectedNFTs.length);
+              nfts.push({ tokenId: selectedNFTs[randomIndex].id });
+            }
+          }
+        }
 
-      // Process token distributions
-      if (config.tokenDistributions.length > 0) {
-        await this.addTokenDistributions(txBuilder, config.tokenDistributions, config.recipients);
-      }
-
-      // Process NFT distributions
-      if (config.nftDistributions.length > 0) {
-        await this.addNFTDistributions(txBuilder, config.nftDistributions, config.recipients);
-      }
-
-      // Set change address and fee
-      txBuilder.sendChangeTo(wallet.changeAddress || wallet.address || '');
-
-      // Build the unsigned transaction
-      const unsignedTx = txBuilder.build().toEIP12Object();
-      
-      // Calculate recommended fee based on transaction size/complexity
-      const recommendedFee = calculateRecommendedFee(unsignedTx);
-      const defaultFee = "1000000"; // 0.001 ERG
-      
-      // If we need a higher fee, rebuild the transaction with the recommended fee
-      if (BigInt(recommendedFee) > BigInt(defaultFee)) {
-        console.log(`Using higher recommended fee: ${recommendedFee} instead of default ${defaultFee}`);
-        txBuilder.payFee(recommendedFee);
-        const updatedUnsignedTx = txBuilder.build().toEIP12Object();
-        console.log('Rebuilt transaction with higher fee');
-        
-        console.log('Airdrop transaction built, sending for signing and submission', {
-          inputsCount: updatedUnsignedTx.inputs?.length || 0,
-          outputsCount: updatedUnsignedTx.outputs?.length || 0,
-          tokenDistributions: config.tokenDistributions.length,
-          nftDistributions: config.nftDistributions.length,
-          fee: recommendedFee
-        });
-        
-        return await signAndSubmitTx(updatedUnsignedTx);
-      }
-      
-      console.log('Airdrop transaction built, sending for signing and submission', {
-        inputsCount: unsignedTx.inputs?.length || 0,
-        outputsCount: unsignedTx.outputs?.length || 0,
-        tokenDistributions: config.tokenDistributions.length,
-        nftDistributions: config.nftDistributions.length,
-        fee: defaultFee
+        return {
+          address: recipient.address,
+          tokens,
+          nfts
+        };
       });
 
-      // Use the enhanced signAndSubmitTx function instead of direct calls
-      return await signAndSubmitTx(unsignedTx);
-      
+      // Build and submit the transaction
+      const unsignedTx = await buildBatchTransferTx(wallet, distributions);
+      const txId = await signAndSubmitTx(unsignedTx);
+
+      toast.success(`Airdrop transaction submitted successfully! Transaction ID: ${txId}`);
+      return txId;
     } catch (error) {
       console.error("Error processing airdrop:", error);
-      
-      // Enhanced error logging
-      if (typeof error === 'object' && error !== null) {
-        console.error('Airdrop error details:', JSON.stringify(error, null, 2));
-      }
-      
-      toast.error(`Airdrop error: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
+      toast.error(`Airdrop failed: ${error instanceof Error ? error.message : "Unknown error"}`);
       throw error;
     }
   }
@@ -148,59 +147,25 @@ export class AirdropService {
     recipients: Recipient[]
   ): Promise<void> {
     for (const distribution of nftDistributions) {
-      const { type } = distribution;
+      const { amount, isRandom } = distribution;
       
-      if (type === "1-to-1" && distribution.mapping) {
-        // Handle 1-to-1 mapping
-        for (const [nftId, recipientId] of Object.entries(distribution.mapping)) {
-          const recipient = recipients.find(r => r.id === recipientId);
-          
-          if (recipient) {
-            const outputBuilder = new OutputBuilder(
-              "1000000", // Minimum ERG required (0.001 ERG)
-              recipient.address
-            );
-            
-            // Add NFT token (amount is always 1 for NFTs)
-            outputBuilder.addTokens([{
-              tokenId: nftId,
-              amount: "1"
-            }]);
-            
-            // Add output to transaction
-            txBuilder.to(outputBuilder);
-          }
-        }
-      } else if (type === "set" && distribution.collection) {
-        // Handle sending the entire set to each recipient
-        for (const recipient of recipients) {
-          for (const nft of distribution.collection.nfts.filter(n => n.selected)) {
-            const outputBuilder = new OutputBuilder(
-              "1000000", // Minimum ERG required (0.001 ERG)
-              recipient.address
-            );
-            
-            // Add NFT token
-            outputBuilder.addTokens([{
-              tokenId: nft.id,
-              amount: "1"
-            }]);
-            
-            // Add output to transaction
-            txBuilder.to(outputBuilder);
-          }
-        }
-      } else if (type === "random" && distribution.collection) {
-        // Handle random distribution
-        const selectedNFTs = distribution.collection.nfts.filter(n => n.selected);
+      // Get the NFTs to distribute
+      const nftsToDistribute = distribution.nft 
+        ? [distribution.nft]
+        : distribution.collection?.nfts.filter(n => n.tokenId !== distribution.collection?.id) || [];
+      
+      if (nftsToDistribute.length === 0) continue;
+      
+      // Calculate total NFTs to distribute per recipient
+      const totalNFTsPerRecipient = amount * nftsToDistribute.length;
+      
+      if (isRandom) {
+        // For random distribution, shuffle all NFTs and distribute them
+        const allNFTs = Array(totalNFTsPerRecipient).fill(nftsToDistribute).flat();
+        const shuffledNFTs = [...allNFTs].sort(() => 0.5 - Math.random());
         
-        // Skip if no NFTs are selected
-        if (selectedNFTs.length === 0) continue;
-        
-        // Distribute NFTs randomly among recipients
-        const shuffledNFTs = [...selectedNFTs].sort(() => 0.5 - Math.random());
-        
-        for (let i = 0; i < Math.min(shuffledNFTs.length, recipients.length); i++) {
+        // Distribute NFTs to recipients
+        for (let i = 0; i < shuffledNFTs.length; i++) {
           const nft = shuffledNFTs[i];
           const recipient = recipients[i % recipients.length];
           
@@ -211,9 +176,29 @@ export class AirdropService {
           
           // Add NFT token
           outputBuilder.addTokens([{
-            tokenId: nft.id,
+            tokenId: nft.tokenId,
             amount: "1"
           }]);
+          
+          // Add output to transaction
+          txBuilder.to(outputBuilder);
+        }
+      } else {
+        // For sequential distribution, distribute NFTs in order
+        for (const recipient of recipients) {
+          // Create output box for each recipient
+          const outputBuilder = new OutputBuilder(
+            "1000000", // Minimum ERG required (0.001 ERG)
+            recipient.address
+          );
+          
+          // Add the specified amount of each NFT to this recipient
+          for (const nft of nftsToDistribute) {
+            outputBuilder.addTokens([{
+              tokenId: nft.tokenId,
+              amount: amount.toString()
+            }]);
+          }
           
           // Add output to transaction
           txBuilder.to(outputBuilder);

@@ -186,19 +186,19 @@ export const selectAllNFTsInCollection = (
   
   if (!collection) return { updatedState: state };
   
-  // Filter out the collection token itself (which has the same ID as the collection)
-  // and only select actual NFTs - if type is not specified, assume it's an NFT
-  const actualNFTs = collection.nfts.filter(nft => 
-    nft.tokenId !== collectionId && 
-    // If type is specified, check if it's a valid NFT type, otherwise assume it's an NFT
-    (nft.type === undefined || nft.type === 'picture' || nft.type === 'audio' || nft.type === 'video')
-  );
+  // Only filter out the collection token itself
+  const actualNFTs = collection.nfts.filter(nft => nft.tokenId !== collectionId);
   
   console.log('[useWalletAssets] Filtering NFTs in collection:', {
     collectionId,
+    collectionName: collection.name,
     totalItems: collection.nfts.length,
     actualNFTs: actualNFTs.length,
-    filtered: collection.nfts.length - actualNFTs.length
+    filtered: collection.nfts.length - actualNFTs.length,
+    nftDetails: actualNFTs.slice(0, 3).map(n => ({
+      tokenId: n.tokenId,
+      name: n.name
+    }))
   });
   
   // Mark all actual NFTs in the collection as selected
@@ -208,9 +208,8 @@ export const selectAllNFTsInCollection = (
         ...c,
         nfts: c.nfts.map(nft => ({
           ...nft,
-          // Only select if it's an actual NFT, not the collection token
-          selected: nft.tokenId !== collectionId && 
-                   (nft.type === undefined || nft.type === 'picture' || nft.type === 'audio' || nft.type === 'video')
+          // Only exclude the collection token itself
+          selected: nft.tokenId !== collectionId
         }))
       };
     }
@@ -221,6 +220,7 @@ export const selectAllNFTsInCollection = (
   const existingSelectedIds = new Set(state.selectedNFTs.map(nft => nft.tokenId));
   const nftsToAdd = actualNFTs.filter(nft => !existingSelectedIds.has(nft.tokenId));
   
+  // Create a new array with both existing selected NFTs and newly selected ones
   const updatedSelectedNFTs = [
     ...state.selectedNFTs,
     ...nftsToAdd.map(nft => ({ ...nft, selected: true }))
@@ -228,16 +228,31 @@ export const selectAllNFTsInCollection = (
   
   console.log('[useWalletAssets] Selected all NFTs in collection:', {
     collectionId,
+    collectionName: collection.name,
     totalNFTs: actualNFTs.length,
     newlySelected: nftsToAdd.length,
-    totalSelected: updatedSelectedNFTs.length
+    totalSelected: updatedSelectedNFTs.length,
+    selectedNFTIds: updatedSelectedNFTs.slice(0, 5).map(n => n.tokenId)
   });
+  
+  // Also mark the collection itself as selected
+  const isCollectionSelected = state.selectedCollections.some(c => c.id === collectionId);
+  let updatedSelectedCollections = state.selectedCollections;
+  
+  if (!isCollectionSelected) {
+    updatedSelectedCollections = [
+      ...state.selectedCollections,
+      { ...collection, selected: true }
+    ];
+    console.log('[useWalletAssets] Also selecting the collection itself:', collectionId);
+  }
   
   return {
     updatedState: {
       ...state,
       collections: updatedCollections,
-      selectedNFTs: updatedSelectedNFTs
+      selectedNFTs: updatedSelectedNFTs,
+      selectedCollections: updatedSelectedCollections
     }
   };
 };
