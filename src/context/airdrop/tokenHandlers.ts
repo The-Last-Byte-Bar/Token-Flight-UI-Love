@@ -1,6 +1,7 @@
 import { Token, TokenDistribution, TokenDistributionType } from '@/types/index';
 import { createDebugLogger } from '@/hooks/useDebugLog';
 import { getCorrectTokenDecimals } from '@/lib/transactions';
+import { AirdropUtils } from '@/utils/AirdropUtils';
 
 const debug = createDebugLogger('AirdropTokenHandlers');
 
@@ -51,12 +52,14 @@ export const handleSelectToken = async (
     displayConverted: initialAmount / Math.pow(10, correctDecimals)
   });
   
-  // Create the new distribution with explicit typing
-  const newDistribution: TokenDistribution = {
-    token: tokenWithCorrectDecimals,
-    type: 'total',
-    amount: initialAmount
-  };
+  // Create the new distribution with explicit typing using AirdropUtils
+  const newDistribution = AirdropUtils.createDistributionRecord(
+    tokenId,
+    tokenWithCorrectDecimals,
+    'total' as TokenDistributionType,
+    initialAmount,
+    'token'
+  );
   
   // Create a new array with the additional token distribution
   const newDistributions = [...tokenDistributions, newDistribution];
@@ -111,11 +114,8 @@ export const handleSetTokenAmount = (
   console.log(`[AirdropContext] Setting token ${tokenId} amount to ${amount}`);
   
   setTokenDistributions(prev => {
-    const updated = prev.map(distribution => 
-      distribution.token.tokenId === tokenId 
-        ? { ...distribution, amount } 
-        : distribution
-    );
+    // Use AirdropUtils to update the amount, ensuring proper entity tracking
+    const updated = AirdropUtils.updateDistributionAmount(prev, tokenId, amount);
     
     console.log(`[AirdropContext] Updated token ${tokenId} amount to ${amount}. ${updated.length} distributions total.`);
     return updated;

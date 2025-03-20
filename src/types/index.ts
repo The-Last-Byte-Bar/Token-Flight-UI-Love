@@ -43,6 +43,9 @@ export interface TokenDistribution {
   token: Token;
   type: TokenDistributionType;
   amount: number;
+  // Entity tracking properties
+  _entityId?: string;   // Unique ID for the entity (tokenId)
+  _entityType?: string; // Type of entity ('token')
 }
 
 export interface NFTDistribution {
@@ -52,7 +55,9 @@ export interface NFTDistribution {
   mapping?: Record<string, string>; // NFT ID to recipient ID mapping
   nftMapping?: Array<{ tokenId: string; name: string; selected: boolean }>; // Array of NFTs with their selection state
   amount: number; // Amount of NFTs to distribute per recipient
-  isRandom: boolean; // Whether to distribute NFTs randomly
+  // Entity tracking properties
+  _entityId?: string;   // Unique ID for the entity (tokenId or collectionId)
+  _entityType?: string; // Type of entity ('nft' or 'collection')
 }
 
 export interface AirdropConfig {

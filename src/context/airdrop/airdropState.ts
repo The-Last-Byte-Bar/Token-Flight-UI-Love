@@ -37,6 +37,7 @@ import {
   handleImportRecipientsFromApi
 } from './recipientHandlers';
 import { buildTokenTransferTx, signAndSubmitTx, buildBatchTransferTx, formatInsufficientInputsError } from '@/lib/transactions';
+import { AirdropUtils } from '@/utils/AirdropUtils';
 
 // Use a type alias to avoid conflicts
 type Token = TokenType;
@@ -292,37 +293,25 @@ export function useAirdropState() {
       // Create distributions array for transaction
       const distributions = recipients.map(recipient => {
         const tokens: { tokenId: string; amount: string | number | bigint; decimals: number }[] = [];
-        const nfts: { tokenId: string }[] = [];
+        const nfts: { tokenId: string; amount: string }[] = [];
 
         // Add token distributions
         for (const tokenDist of tokenDistributions) {
           const { token, type, amount } = tokenDist;
           // For total distribution, we need to divide the raw amount by recipients
-          // For per-user, we use the raw amount directly
-          const rawAmount = type === "total" 
-            ? Math.floor(amount / recipients.length)  // Divide raw amount by recipients
-            : amount;  // Use raw amount directly for per-user
+          const rawAmount = type === 'total' 
+            ? Math.floor(amount / recipients.length) 
+            : amount;
           
-          // For Pumperino token specifically (ID: 7c788b124df40d5ab4d4c428dd7a1290b5b8579da4e8cbddeea060b1671312da),
-          // override the decimals to 3 as confirmed by the blockchain API
-          const correctDecimals = token.tokenId === '7c788b124df40d5ab4d4c428dd7a1290b5b8579da4e8cbddeea060b1671312da'
-            ? 3 // Force 3 decimals for Pumperino
-            : token.decimals;
+          // Get the correct decimals for this token
+          const correctDecimals = token.decimals || 0;
           
-          console.log(`Calculating for recipient ${recipient.address.substring(0, 8)}... - ${token.name}:`, {
-            tokenId: token.tokenId,
-            originalAmount: amount,
-            calculatedAmount: rawAmount,
-            type,
-            decimalsInMetadata: token.decimals,
-            decimalsUsed: correctDecimals,
-            displayAmount: rawAmount / Math.pow(10, correctDecimals) // Convert raw to display for logging
-          });
-          
-          console.log(`Raw amount for ${token.name}:`, {
+          debug(`Adding token ${token.tokenId.substring(0, 8)}...`, {
             rawAmount,
-            displayAmount: rawAmount / Math.pow(10, correctDecimals), // Convert raw to display for logging
-            decimals: correctDecimals
+            originalAmount: amount,
+            type,
+            recipientCount: recipients.length,
+            correctDecimals
           });
           
           tokens.push({
@@ -332,9 +321,21 @@ export function useAirdropState() {
           });
         }
 
-        // Add NFT distributions
+        // Process each NFT distribution separately using the entity ID to ensure correct amounts
         for (const nftDist of nftDistributions) {
-          const { amount, isRandom } = nftDist;
+          // Get the correct amount for THIS specific NFT distribution using the entity ID
+          const entityId = nftDist._entityId || 
+                        nftDist.nft?.tokenId || 
+                        nftDist.collection?.id || '';
+                        
+          const amountValue = Number(nftDist.amount);
+          const nftDistAmount = !isNaN(amountValue) && amountValue > 0 ? amountValue : 1;
+          
+          console.log(`Processing NFT distribution for ${nftDist.collection?.name || nftDist.nft?.name}:`, {
+            entityId,
+            amount: nftDistAmount,
+            id: nftDist.collection?.id || nftDist.nft?.tokenId
+          });
           
           // Get the NFTs to distribute
           const nftsToDistribute = nftDist.nft 
@@ -343,21 +344,14 @@ export function useAirdropState() {
           
           if (nftsToDistribute.length === 0) continue;
           
-          // Calculate total NFTs to distribute per recipient
-          const totalNFTsPerRecipient = amount * nftsToDistribute.length;
-          
-          if (isRandom) {
-            // For random distribution, we'll handle this in the transaction builder
-            // Just add the NFTs to the list
-            nftsToDistribute.forEach(nft => {
-              nfts.push({ tokenId: nft.tokenId });
+          // Add each NFT from this distribution with its specific amount 
+          nftsToDistribute.forEach(nft => {
+            console.log(`Adding NFT ${nft.name || nft.tokenId.substring(0, 8)}... with amount: ${nftDistAmount}`);
+            nfts.push({ 
+              tokenId: nft.tokenId,
+              amount: nftDistAmount.toString()
             });
-          } else {
-            // For sequential distribution, add the specified amount of each NFT
-            nftsToDistribute.forEach(nft => {
-              nfts.push({ tokenId: nft.tokenId });
-            });
-          }
+          });
         }
 
         return {
@@ -366,6 +360,16 @@ export function useAirdropState() {
           nfts
         };
       });
+      
+      // Debug log all distributions before submitting
+      debug('Final distributions before transaction:', distributions.map(dist => ({
+        address: dist.address.substring(0, 10) + '...',
+        tokens: dist.tokens.length,
+        nfts: dist.nfts.map(nft => ({
+          tokenId: nft.tokenId.substring(0, 8) + '...',
+          amount: nft.amount
+        }))
+      })));
 
       // Build and submit the transaction
       const unsignedTx = await buildBatchTransferTx(wallet, distributions);
@@ -404,22 +408,6 @@ export function useAirdropState() {
     }
   }, [recipients]);
 
-  const setNFTRandomDistribution = useCallback((entityId: string, isRandom: boolean) => {
-    debug(`Setting random distribution for ${entityId} to ${isRandom}`);
-    setNFTDistributions(prev => 
-      prev.map(distribution => {
-        if (
-          (distribution.nft?.tokenId === entityId) || 
-          (distribution.collection?.id === entityId && !distribution.nft)
-        ) {
-          return { ...distribution, isRandom };
-        }
-        return distribution;
-      })
-    );
-    flushLogs();
-  }, []);
-
   return {
     // State
     tokens,
@@ -449,7 +437,6 @@ export function useAirdropState() {
     setNFTDistributions,
     setNFTDistributionType,
     setNFTAmountForDistribution,
-    setNFTRandomDistribution,
     
     // Recipient handlers
     addRecipient,

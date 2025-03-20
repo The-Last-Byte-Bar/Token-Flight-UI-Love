@@ -5,16 +5,14 @@ import { useEffect, useState } from 'react';
 import { Input } from './ui/input';
 import { isValidAmount } from '@/lib/validation';
 import React from 'react';
-import { Switch } from './ui/switch';
 
 interface NFTDistributionFormProps {
   distribution: NFTDistribution;
 }
 
 export default function NFTDistributionForm({ distribution }: NFTDistributionFormProps) {
-  const { setNFTDistributionType, setNFTAmountForDistribution, setNFTRandomDistribution } = useAirdrop();
+  const { setNFTDistributionType, setNFTAmountForDistribution } = useAirdrop();
   const [amount, setAmount] = useState<number>(distribution.amount || 1);
-  const [isRandom, setIsRandom] = useState<boolean>(distribution.isRandom || false);
   const [error, setError] = useState<string | null>(null);
   
   const name = distribution.collection 
@@ -47,10 +45,9 @@ export default function NFTDistributionForm({ distribution }: NFTDistributionFor
       type: distribution.type,
       hasCollection: !!distribution.collection,
       hasNFT: !!distribution.nft,
-      amount,
-      isRandom
+      amount
     });
-  }, [name, entityId, count, distribution.type, distribution.collection, distribution.nft, amount, isRandom]);
+  }, [name, entityId, count, distribution.type, distribution.collection, distribution.nft, amount]);
     
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -83,12 +80,14 @@ export default function NFTDistributionForm({ distribution }: NFTDistributionFor
     
     // Valid amount, update state and context
     setAmount(newAmount);
-    setNFTAmountForDistribution(entityId, newAmount);
-  };
-
-  const handleRandomToggle = (checked: boolean) => {
-    setIsRandom(checked);
-    setNFTRandomDistribution(entityId, checked);
+    
+    // Make sure we're using the correct entity ID - very important!
+    const correctEntityId = distribution.collection 
+      ? distribution.collection.id 
+      : distribution.nft?.tokenId || '';
+      
+    console.log(`[NFTDistributionForm] Setting amount for ${name} (${correctEntityId}) to ${newAmount}`);
+    setNFTAmountForDistribution(correctEntityId, newAmount);
   };
   
   return (
@@ -134,22 +133,6 @@ export default function NFTDistributionForm({ distribution }: NFTDistributionFor
             </p>
           )}
         </div>
-
-        <div className="flex items-center space-x-2">
-          <Switch
-            checked={isRandom}
-            onCheckedChange={handleRandomToggle}
-            id={`random-${entityId}`}
-          />
-          <label htmlFor={`random-${entityId}`} className="text-sm font-bold">
-            Random Distribution
-          </label>
-        </div>
-        {isRandom && (
-          <p className="text-xs text-deepsea-bright">
-            NFTs will be randomly assigned to recipients
-          </p>
-        )}
       </div>
     </div>
   );

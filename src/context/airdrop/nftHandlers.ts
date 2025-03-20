@@ -1,6 +1,7 @@
 import { Collection, NFT, NFTDistribution, NFTDistributionType, Recipient } from '@/types/index';
 import { toast } from 'sonner';
 import { createDebugLogger } from '@/hooks/useDebugLog';
+import { AirdropUtils } from '@/utils/AirdropUtils';
 
 const debug = createDebugLogger('AirdropNFTHandlers');
 
@@ -80,14 +81,18 @@ export const handleSelectCollection = (
     nfts: distributableNFTs
   };
   
-  const newDistribution: NFTDistribution = { 
-    collection: distributableCollection,
-    type: '1-to-1' as NFTDistributionType,
-    mapping,
-    nftMapping: selectedNFTs, // Use the explicitly selected NFTs array
-    amount: 1,
-    isRandom: false
-  };
+  // Create a new distribution for this collection using AirdropUtils to ensure proper tracking
+  const newDistribution = AirdropUtils.createDistributionRecord(
+    collectionId,  // Use the collection ID as the entity ID
+    distributableCollection,  // The collection object
+    '1-to-1' as NFTDistributionType,
+    1,      // Default amount
+    'collection'  // Field name is 'collection'
+  );
+  
+  // Add the mapping fields needed for NFT distributions
+  newDistribution.mapping = mapping;
+  newDistribution.nftMapping = selectedNFTs;
   
   debug(`Adding new NFT distribution:`, {
     collectionId: collection.id,
@@ -96,10 +101,8 @@ export const handleSelectCollection = (
     distributableNfts: nftsCount,
     currentDistributions: filteredDistributions.length,
     mappingSize: Object.keys(mapping).length,
-    nftMappingSize: newDistribution.nftMapping.length,
+    nftMappingSize: newDistribution.nftMapping?.length || 0,
     nfts: distributableNFTs.slice(0, 5).map(nft => ({ id: nft.tokenId, name: nft.name })),
-    // Log full details for verification
-    allNftsIncluded: distributableNFTs.length === selectedNFTs.length
   });
   
   setNFTDistributions([...filteredDistributions, newDistribution]);
@@ -194,14 +197,17 @@ export const handleSelectNFT = (
     };
   }
   
-  // Create a new distribution for this NFT
-  const newDistribution: NFTDistribution = {
-    type: '1-to-1',
-    nft,
-    collection: parentCollection,
-    amount: 1,
-    isRandom: false
-  };
+  // Create a new distribution for this NFT using AirdropUtils to ensure proper tracking
+  const newDistribution = AirdropUtils.createDistributionRecord(
+    nftId,  // Use the NFT ID as the entity ID
+    nft,    // The NFT object
+    '1-to-1' as NFTDistributionType,
+    1,      // Default amount
+    'nft'   // Field name is 'nft'
+  );
+  
+  // Add the collection for context
+  newDistribution.collection = parentCollection;
   
   debug(`Adding NFT ${nft.name} to distributions`, {
     nftId: nft.tokenId,
@@ -256,18 +262,32 @@ export const handleSetNFTAmount = (
 ) => {
   console.log(`[AirdropContext] Setting amount for ${entityId} to ${amount}`);
   
-  setNFTDistributions(prev => 
-    prev.map(distribution => {
-      // Check if this is the distribution we're looking for
-      if (
-        (distribution.nft?.tokenId === entityId) || 
-        (distribution.collection?.id === entityId && !distribution.nft)
-      ) {
-        return { ...distribution, amount };
-      }
-      return distribution;
-    })
-  );
+  setNFTDistributions(prev => {
+    // Log all distributions to help debug what's available
+    console.log(`[AirdropContext] Current distributions:`, 
+      prev.map(d => ({
+        id: d.collection?.id || d.nft?.tokenId,
+        name: d.collection?.name || d.nft?.name, 
+        amount: d.amount,
+        collectionId: d.collection?.id,
+        nftId: d.nft?.tokenId
+      }))
+    );
+    
+    // Use AirdropUtils to update the amount, ensuring no cross-contamination
+    const updated = AirdropUtils.updateDistributionAmount(prev, entityId, amount);
+    
+    // Log the final distributions
+    console.log(`[AirdropContext] Final distributions after update:`, 
+      updated.map(d => ({
+        id: d.collection?.id || d.nft?.tokenId,
+        name: d.collection?.name || d.nft?.name, 
+        amount: d.amount
+      }))
+    );
+    
+    return updated;
+  });
 };
 
 /**
@@ -307,9 +327,11 @@ export const updateNFTDistributionMappings = (
         nftName: distribution.nft?.name,
         nftsToMap: nftsToMap.length,
         recipientsAvailable: recipients.length,
-        newMappingSize: Object.keys(newMapping).length
+        newMappingSize: Object.keys(newMapping).length,
+        amount: distribution.amount // Log the amount to verify it's preserved
       });
 
+      // Preserve all existing properties, only update the mapping
       return {
         ...distribution,
         mapping: newMapping
@@ -317,6 +339,14 @@ export const updateNFTDistributionMappings = (
     }
     return distribution;
   });
+
+  // Log the updated distributions with their amounts
+  debug('Final updated distributions:', updatedDistributions.map(d => ({
+    id: d.collection?.id || d.nft?.tokenId,
+    name: d.collection?.name || d.nft?.name,
+    amount: d.amount,
+    type: d.type
+  })));
 
   setNFTDistributions(updatedDistributions);
 };

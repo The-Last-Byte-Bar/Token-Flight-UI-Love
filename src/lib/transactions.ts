@@ -563,7 +563,7 @@ export const buildBatchTransferTx = async (
   distributions: {
     address: string;
     tokens: { tokenId: string; amount: string | number | bigint; decimals?: number }[];
-    nfts: { tokenId: string }[];
+    nfts: { tokenId: string; amount?: string }[];
   }[],
   fee: string = DEFAULT_TX_FEE
 ) => {
@@ -745,11 +745,18 @@ export const buildBatchTransferTx = async (
         }]);
       }
 
-      // Add NFTs (amount is always 1 for NFTs)
+      // Add NFTs with their specific amounts
       for (const nft of nfts) {
+        const nftAmount = nft.amount || "1";  // Make sure we use the specific amount for this NFT
+        
+        console.log(`Adding NFT ${nft.tokenId.substring(0, 8)}... to transaction:`, {
+          amount: nftAmount,
+          recipientAddress: address.substring(0, 10) + '...'
+        });
+        
         outputBuilder.addTokens([{
           tokenId: nft.tokenId,
-          amount: "1"
+          amount: nftAmount
         }]);
       }
 

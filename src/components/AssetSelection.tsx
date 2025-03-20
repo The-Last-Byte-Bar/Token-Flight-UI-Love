@@ -126,8 +126,7 @@ export default function AssetSelection() {
           nft,
           collection: parentCollection, // Include the parent collection info
           type: '1-to-1' as const,
-          amount: 1, // Default to 1 NFT per recipient
-          isRandom: false // Default to non-random distribution
+          amount: 1 // Default to 1 NFT per recipient
         };
       });
     

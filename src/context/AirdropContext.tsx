@@ -2,7 +2,6 @@ import { createContext } from 'react';
 
 // Export the context type for use in other components
 export interface AirdropContextType {
-  setNFTRandomDistribution: (entityId: string, isRandom: boolean) => void;
 }
 
 // Create and export the context

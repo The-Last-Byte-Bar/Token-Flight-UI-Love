@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAirdrop } from '@/context/AirdropContext';
 import PixelatedContainer from './PixelatedContainer';
 import PixelatedButton from './PixelatedButton';
 import { NFTDistributionType, TokenDistributionType } from '@/types/index';
+import { AirdropUtils } from '@/utils/AirdropUtils';
 
 const ReviewAndConfirm = () => {
   const { 
@@ -14,49 +15,45 @@ const ReviewAndConfirm = () => {
   const [txId, setTxId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   
-  const getTokenDistributionLabel = (type: TokenDistributionType) => {
-    switch (type) {
-      case 'total':
-        return 'Total Distribution';
-      case 'per-user':
-        return 'Per User Distribution';
-      default:
-        return type;
-    }
-  };
+  // Enhanced debugging for NFT distributions
+  useEffect(() => {
+    // More detailed logging to help diagnose the issue
+    console.log('[ReviewAndConfirm] NFT distributions raw data:', nftDistributions);
+    
+    // Log specific details for each NFT distribution
+    nftDistributions.forEach((dist, idx) => {
+      console.log(`[ReviewAndConfirm] NFT Distribution #${idx + 1} details:`, {
+        entityType: dist._entityType,
+        entityId: dist._entityId,
+        amount: dist.amount,
+        
+        // Collection info if available
+        collectionInfo: dist.collection ? {
+          id: dist.collection.id,
+          name: dist.collection.name,
+          nftCount: dist.collection.nfts.length,
+          nfts: dist.collection.nfts.map(n => ({ 
+            tokenId: n.tokenId,
+            name: n.name
+          }))
+        } : 'No collection',
+        
+        // Individual NFT info if available
+        nftInfo: dist.nft ? {
+          tokenId: dist.nft.tokenId,
+          name: dist.nft.name
+        } : 'No individual NFT'
+      });
+    });
+  }, [nftDistributions]);
   
-  const getNFTDistributionLabel = (type: NFTDistributionType) => {
-    switch (type) {
-      case '1-to-1':
-        return '1-to-1 Mapping';
-      case 'set':
-        return 'Set Distribution';
-      case 'random':
-        return 'Random Distribution';
-      default:
-        return type;
-    }
+  const getDistributionLabel = (type: TokenDistributionType | NFTDistributionType) => {
+    return AirdropUtils.getDistributionTypeLabel(type);
   };
   
   // Format token amount considering decimals
   const formatTokenAmount = (amount: number, decimals: number) => {
-    // Convert raw amount to decimal display value
     return (amount / Math.pow(10, decimals)).toString();
-  };
-  
-  // Calculate total tokens for a distribution
-  const calculateTotalTokens = (distribution: typeof tokenDistributions[0]) => {
-    const { type, amount, token } = distribution;
-    const decimals = token.decimals || 0;
-    
-    if (type === 'total') {
-      return formatTokenAmount(amount, decimals);
-    } else if (type === 'per-user') {
-      // For per-user, multiply by number of recipients
-      const totalRawAmount = amount * recipients.length;
-      return formatTokenAmount(totalRawAmount, decimals);
-    }
-    return '0';
   };
   
   // Calculate per-recipient amount
@@ -120,32 +117,36 @@ const ReviewAndConfirm = () => {
             ) : (
               <div className="space-y-3">
                 {tokenDistributions.map((distribution, index) => (
-                  <div key={index} className="bg-deepsea-dark/30 p-3">
+                  <div key={distribution._entityId || index} className="bg-deepsea-dark/30 p-3">
                     <div className="flex justify-between items-center">
                       <div className="font-bold">{distribution.token.name}</div>
-                      <div className="text-sm">{getTokenDistributionLabel(distribution.type)}</div>
+                      <div className="text-sm">{getDistributionLabel(distribution.type)}</div>
                     </div>
+                    
                     <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-deepsea-bright">
-                          {distribution.type === 'total' ? 'Total Amount:' : 'Amount Per Recipient:'}
-                        </span>
-                        <span className="ml-2">
-                          {formatTokenAmount(distribution.amount, distribution.token.decimals)}
-                        </span>
-                      </div>
-                      {distribution.type === 'total' && (
-                        <div>
+                      {distribution.type === 'total' ? (
+                        <>
+                          <div>
+                            <span className="text-deepsea-bright">Total Amount:</span>
+                            <span className="ml-2">
+                              {formatTokenAmount(distribution.amount, distribution.token.decimals)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-deepsea-bright">Amount Per Recipient:</span>
+                            <span className="ml-2">
+                              {calculatePerRecipientAmount(distribution)}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="col-span-2">
                           <span className="text-deepsea-bright">Amount Per Recipient:</span>
                           <span className="ml-2">
-                            {calculatePerRecipientAmount(distribution)}
+                            {formatTokenAmount(distribution.amount, distribution.token.decimals)}
                           </span>
                         </div>
                       )}
-                      <div className={distribution.type === 'total' ? 'col-span-2 text-right' : 'text-right'}>
-                        <span className="text-deepsea-bright">Total Tokens:</span>
-                        <span className="ml-2">{calculateTotalTokens(distribution)}</span>
-                      </div>
                     </div>
                   </div>
                 ))}
@@ -164,34 +165,56 @@ const ReviewAndConfirm = () => {
             ) : (
               <div className="space-y-3">
                 {nftDistributions.map((distribution, index) => {
-                  const name = distribution.collection 
-                    ? distribution.collection.name 
-                    : distribution.nft?.name || 'Unknown NFT';
+                  // Get the entity ID for unique identification
+                  const entityId = distribution._entityId || 
+                                   distribution.nft?.tokenId || 
+                                   distribution.collection?.id || `dist-${index}`;
                   
-                  // Get list of NFTs being distributed
-                  const nfts = distribution.collection 
-                    ? distribution.collection.nfts
+                  // FIXED: Get the display name based on the entity type
+                  // Prioritize using the individual NFT name if this is an NFT distribution
+                  const displayName = distribution._entityType === 'nft' && distribution.nft
+                    ? distribution.nft.name 
+                    : distribution.collection?.name || 'Unknown NFT';
+                  
+                  // Get list of unique NFTs in this distribution
+                  const nfts = distribution._entityType === 'nft' && distribution.nft
+                    ? [{ 
+                        tokenId: distribution.nft.tokenId,
+                        name: distribution.nft.name
+                      }]
+                    : distribution.collection?.nfts
                         .filter(n => n.tokenId !== distribution.collection?.id)
-                        .map(n => n.name)
-                    : distribution.nft 
-                      ? [distribution.nft.name]
-                      : [];
+                        .filter((nft, i, arr) => 
+                          arr.findIndex(n => n.tokenId === nft.tokenId) === i)
+                        .map(n => ({
+                          tokenId: n.tokenId,
+                          name: n.name
+                        })) || [];
                   
                   return (
-                    <div key={index} className="bg-deepsea-dark/30 p-3">
+                    <div key={entityId} className="bg-deepsea-dark/30 p-3">
                       <div className="flex justify-between items-center">
-                        <div className="font-bold">{name}</div>
-                        <div className="text-sm">{getNFTDistributionLabel(distribution.type)}</div>
+                        <div className="font-bold">{displayName}</div>
+                        <div className="text-sm">{getDistributionLabel(distribution.type)}</div>
                       </div>
-                      <div className="mt-2 text-sm">
-                        <span className="text-deepsea-bright">NFTs to distribute:</span>
-                        <span className="ml-2">{nfts.length}</span>
+                      
+                      <div className="mt-2">
+                        <span className="text-deepsea-bright text-sm">Amount per recipient:</span>
+                        <span className="ml-2 text-sm">
+                          {distribution.amount} per NFT
+                        </span>
                       </div>
+                      
                       {nfts.length > 0 && (
-                        <div className="mt-2 text-xs text-gray-400 space-y-1">
-                          {nfts.map((nftName, i) => (
-                            <div key={i}>• {nftName}</div>
-                          ))}
+                        <div className="mt-3 text-xs">
+                          <div className="font-medium mb-1 text-deepsea-bright">NFTs in this distribution:</div>
+                          <div className="grid grid-cols-2 gap-1 bg-deepsea-dark/40 p-2 rounded">
+                            {nfts.map((nft) => (
+                              <div key={nft.tokenId} className="truncate">
+                                • {nft.name}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

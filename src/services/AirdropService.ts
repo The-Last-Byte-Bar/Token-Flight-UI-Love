@@ -41,7 +41,7 @@ export class AirdropService {
       // Prepare distributions for each recipient
       const distributions = config.recipients.map(recipient => {
         const tokens: { tokenId: string; amount: string | number | bigint; decimals: number }[] = [];
-        const nfts: { tokenId: string }[] = [];
+        const nfts: { tokenId: string; amount: string }[] = [];
 
         // Add token distributions
         for (const tokenDist of config.tokenDistributions) {
@@ -59,19 +59,25 @@ export class AirdropService {
 
         // Add NFT distributions
         for (const nftDist of config.nftDistributions) {
-          const { type, collection, mapping } = nftDist;
+          const { type, collection, mapping, amount } = nftDist;
           
           if (type === "1-to-1" && mapping) {
             // For 1-to-1 mapping, find the NFT assigned to this recipient
             const nftId = Object.entries(mapping).find(([_, recipientId]) => recipientId === recipient.id)?.[0];
             if (nftId) {
-              nfts.push({ tokenId: nftId });
+              nfts.push({ 
+                tokenId: nftId,
+                amount: amount.toString()
+              });
             }
           } else if (type === "total" && collection) {
             // For total distribution, add all selected NFTs
             const selectedNFTs = collection.nfts.filter(n => n.selected);
             selectedNFTs.forEach(nft => {
-              nfts.push({ tokenId: nft.id });
+              nfts.push({ 
+                tokenId: nft.id || nft.tokenId,
+                amount: amount.toString()
+              });
             });
           } else if (type === "random" && collection) {
             // For random distribution, we'll handle this separately
@@ -79,7 +85,10 @@ export class AirdropService {
             const selectedNFTs = collection.nfts.filter(n => n.selected);
             if (selectedNFTs.length > 0) {
               const randomIndex = Math.floor(Math.random() * selectedNFTs.length);
-              nfts.push({ tokenId: selectedNFTs[randomIndex].id });
+              nfts.push({ 
+                tokenId: selectedNFTs[randomIndex].id || selectedNFTs[randomIndex].tokenId,
+                amount: amount.toString()
+              });
             }
           }
         }
@@ -146,8 +155,12 @@ export class AirdropService {
     nftDistributions: NFTDistribution[],
     recipients: Recipient[]
   ): Promise<void> {
+    // Process each NFT distribution separately
     for (const distribution of nftDistributions) {
-      const { amount, isRandom } = distribution;
+      // Get the specific amount for this distribution
+      const { amount } = distribution;
+      
+      console.log(`Processing NFT distribution with amount: ${amount}`);
       
       // Get the NFTs to distribute
       const nftsToDistribute = distribution.nft 
@@ -156,53 +169,25 @@ export class AirdropService {
       
       if (nftsToDistribute.length === 0) continue;
       
-      // Calculate total NFTs to distribute per recipient
-      const totalNFTsPerRecipient = amount * nftsToDistribute.length;
-      
-      if (isRandom) {
-        // For random distribution, shuffle all NFTs and distribute them
-        const allNFTs = Array(totalNFTsPerRecipient).fill(nftsToDistribute).flat();
-        const shuffledNFTs = [...allNFTs].sort(() => 0.5 - Math.random());
+      // For sequential distribution, distribute NFTs in order
+      for (const recipient of recipients) {
+        // Create output box for each recipient
+        const outputBuilder = new OutputBuilder(
+          "1000000", // Minimum ERG required (0.001 ERG)
+          recipient.address
+        );
         
-        // Distribute NFTs to recipients
-        for (let i = 0; i < shuffledNFTs.length; i++) {
-          const nft = shuffledNFTs[i];
-          const recipient = recipients[i % recipients.length];
-          
-          const outputBuilder = new OutputBuilder(
-            "1000000", // Minimum ERG required (0.001 ERG)
-            recipient.address
-          );
-          
-          // Add NFT token
+        // Add the specified amount of each NFT to this recipient
+        for (const nft of nftsToDistribute) {
+          console.log(`Adding NFT ${nft.name || nft.tokenId.substring(0, 8)} with amount ${amount} to recipient ${recipient.address.substring(0, 8)}...`);
           outputBuilder.addTokens([{
             tokenId: nft.tokenId,
-            amount: "1"
+            amount: amount.toString() // Use the specific amount for this distribution
           }]);
-          
-          // Add output to transaction
-          txBuilder.to(outputBuilder);
         }
-      } else {
-        // For sequential distribution, distribute NFTs in order
-        for (const recipient of recipients) {
-          // Create output box for each recipient
-          const outputBuilder = new OutputBuilder(
-            "1000000", // Minimum ERG required (0.001 ERG)
-            recipient.address
-          );
-          
-          // Add the specified amount of each NFT to this recipient
-          for (const nft of nftsToDistribute) {
-            outputBuilder.addTokens([{
-              tokenId: nft.tokenId,
-              amount: amount.toString()
-            }]);
-          }
-          
-          // Add output to transaction
-          txBuilder.to(outputBuilder);
-        }
+        
+        // Add output to transaction
+        txBuilder.to(outputBuilder);
       }
     }
   }
