@@ -64,6 +64,25 @@ This project is built with .
 
 Simply open [Lovable](https://lovable.dev/projects/0655903c-2e7b-4043-bff7-158da6db6231) and click on Share -> Publish.
 
+### Server Deployment
+
+To deploy this project on your own server:
+
+1. Clone the repository to your server
+2. Set up Docker and Docker Compose
+3. Build and run the containers:
+   ```sh
+   docker compose build
+   docker compose up -d
+   ```
+4. Configure Nginx using the provided `nginx.server.conf` file:
+   ```sh
+   cp nginx.server.conf /etc/nginx/sites-available/your-domain.conf
+   ln -sf /etc/nginx/sites-available/your-domain.conf /etc/nginx/sites-enabled/
+   nginx -t
+   systemctl restart nginx
+   ```
+
 ## I want to use a custom domain - is that possible?
 
 We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
