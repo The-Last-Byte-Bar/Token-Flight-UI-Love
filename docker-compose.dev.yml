@@ -14,7 +14,7 @@ services:
       - /app/node_modules
     environment:
       - NODE_ENV=development
-      - VITE_API_URL=http://localhost:3002
+      - VITE_API_URL=http://backend:3000
     command: npm run dev -- --host
 
   backend:

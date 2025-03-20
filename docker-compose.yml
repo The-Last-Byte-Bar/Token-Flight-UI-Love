@@ -11,7 +11,7 @@ services:
       - backend
     environment:
       - NODE_ENV=production
-      - VITE_API_URL=http://localhost/api
+      - VITE_API_URL=/api
 
   backend:
     build:
